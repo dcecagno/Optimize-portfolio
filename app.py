@@ -256,7 +256,7 @@ def main():
     st.title("Simulação de Carteiras e Fronteira Eficiente")
 
     # Upload do arquivo CSV
-    url = "https://raw.github.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
+    url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
 
     # Período de análise
