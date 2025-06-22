@@ -408,3 +408,6 @@ def main():
             sim_vol_comb, np.exp(sim_ret_comb) - 1, ef_vol_comb_opt, np.exp(ef_ret_comb_opt) - 1, vol_comb, ret_comb,
             vol_man, ret_man
         )
+        
+if __name__ == "__main__":
+    main()
