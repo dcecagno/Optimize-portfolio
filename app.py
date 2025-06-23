@@ -215,6 +215,10 @@ def rebalance_weights(weights, min_w=0.03):
         weights = weights / total
     return weights
 
+def normalizar_tickers(lista):
+    return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
+
+
 # =======================
 # Funções de Plotagem
 # =======================
@@ -222,9 +226,10 @@ def rebalance_weights(weights, min_w=0.03):
 def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_aco, ret_aco,
                  sim_vol_fii, sim_ret_fii, ef_vol_fii_opt, ef_ret_fii_opt, vol_fii, ret_fii,
                  sim_vol_comb, sim_ret_comb, ef_vol_comb_opt, ef_ret_comb_opt, vol_comb, ret_comb,
-                 vol_man, ret_man):
+                 vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida):
     plt.figure(figsize=(12,8))
 
+    # Monte Carlo e Fronteiras
     plt.scatter(sim_vol_fii, sim_ret_fii, s=8, alpha=0.12, color='green', label='FIIs (Monte Carlo)')
     plt.plot(ef_vol_fii_opt, ef_ret_fii_opt, 'g-', lw=2, label='Fronteira FIIs')
     plt.scatter(vol_fii, ret_fii, color='green', marker='*', s=180, label='Sharpe Máx FIIs')
@@ -237,7 +242,10 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
     plt.plot(ef_vol_aco_opt, ef_ret_aco_opt, 'b-', lw=2, label='Fronteira Ações')
     plt.scatter(vol_aco, ret_aco, color='blue', marker='*', s=180, label='Sharpe Máx Ações')
 
-    plt.scatter(vol_man, ret_man, c="black", s=80, marker="X", label="Minha Carteira")
+    # Carteiras manuais
+    plt.scatter(vol_man, ret_man, c="black", s=80, marker="X", label="Carteira Manual")
+    plt.scatter(vol_opt_manual, ret_opt_manual, c="orange", s=80, marker="D", label="Manual Otimizada")
+    plt.scatter(vol_hibrida, ret_hibrida, c="purple", s=80, marker="P", label="Carteira Híbrida")
 
     plt.xlabel("Volatilidade Anualizada")
     plt.ylabel("Retorno Anualizado")
@@ -247,6 +255,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
     plt.gca().xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
     plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
     st.pyplot(plt)
+
 
 # =======================
 # Bloco Principal
@@ -267,10 +276,10 @@ def main():
 
     # Listas de ativos
     acoes = st.text_area("Lista de ações (separadas por vírgula)", value="ABEV3.SA, AGRO3.SA, BBAS3.SA, BBDC3.SA, BBSE3.SA, BMOB3.SA, BPAC11.SA, BRAV3.SA, BRBI11.SA, BRSR6.SA, CBAV3.SA, CGRA4.SA, CMIG4.SA, CPFE3.SA, CPLE6.SA, CSAN3.SA, CSMG3.SA, CSUD3.SA, CXSE3.SA, EGIE3.SA, ELET3.SA, ENEV3.SA, ENGI11.SA, EQTL3.SA, FLRY3.SA, GGBR4.SA, GRND3.SA, IRBR3.SA, ISAE4.SA, ITUB4.SA, JBSS3.SA, JHSF3.SA, KEPL3.SA, KLBN11.SA, NEOE3.SA, ODPV3.SA, PETR4.SA, PNVL3.SA, POMO4.SA, PSSA3.SA, PRIO3.SA, RANI3.SA, RECV3.SA, RENT3.SA, RNEW4.SA, SANB11.SA, SAPR4.SA, SBSP3.SA, SUZB3.SA, TAEE11.SA, TIMS3.SA, VALE3.SA, VIVR3.SA, VULC3.SA, WEGE3.SA, WIZC3.SA")
-    acoes = [x.strip() for x in acoes.split(",")]
+    acoes = normalizar_tickers([x.strip() for x in acoes.split(",")]) # acoes = [x.strip() for x in acoes.split(",")]
 
     fii = st.text_area("Lista de FIIs (separadas por vírgula)", value="BLMG11.SA, BRCO11.SA, KNIP11.SA, LVBI11.SA, MXRF11.SA, BRCR11.SA, BTLG11.SA, CNES11.SA, CPSH11.SA, GARE11.SA, HGLG11.SA, HGRU11.SA, HSML11.SA, PATL11.SA, RBRP11.SA, RBRR11.SA, XPML11.SA")
-    fii = [x.strip() for x in fii.split(",")]
+    fii = normalizar_tickers([x.strip() for x in fii.split(",")]) # fii = [x.strip() for x in fii.split(",")]
 
     # Parâmetros para a simulação de Monte Carlo
     n_sim = 100_000
@@ -289,6 +298,7 @@ def main():
     st.write("[LOG] Ações problemáticas:", acoes_problema)
     st.write("[LOG] FIIs válidos:", fii_validos)
     st.write("[LOG] FIIs problemáticos:", fii_problema)
+    st.write("[LOG] Carregando o gráfico. Aguarde!")
 
     # Cria os DataFrames filtrados para as simulações
     prices_aco  = prices_read[acoes_validos]
@@ -308,44 +318,66 @@ def main():
     mu_comb = rets_comb.mean() * 252
     cov_comb = rets_comb.cov() * 252
 
-    # Simulação para ações
-    sim_ret_aco, sim_vol_aco, sim_pesos_aco, ativos_aco = simulate_portfolios_cardinalidade_controlada(
-        prices_aco,
-        acoes_validos,
-        n_sim,
-        min_assets,
-        max_assets,
-        min_w,
-        max_w,
-        seed,
-        alpha_dirichlet
-    )
+    if "simulacoes_realizadas" not in st.session_state:
+        st.session_state.simulacoes_realizadas = False
 
-    # Simulação para FIIs
-    sim_ret_fii, sim_vol_fii, sim_pesos_fii, ativos_fii = simulate_portfolios_cardinalidade_controlada(
-        prices_fii,
-        fii_validos,
-        n_sim,
-        min_assets,
-        max_assets,
-        min_w,
-        max_w,
-        seed,
-        alpha_dirichlet
-    )
+    if not st.session_state.simulacoes_realizadas:
+        # Simulação para ações
+        st.session_state.sim_ret_aco, st.session_state.sim_vol_aco, st.session_state.sim_pesos_aco, st.session_state.ativos_aco = simulate_portfolios_cardinalidade_controlada(
+            prices_aco,
+            acoes_validos,
+            n_sim,
+            min_assets,
+            max_assets,
+            min_w,
+            max_w,
+            seed,
+            alpha_dirichlet
+        )
 
-    # Simulação para ações + FIIs
-    sim_ret_comb, sim_vol_comb, sim_pesos_comb, ativos_comb = simulate_portfolios_cardinalidade_controlada(
-        prices_comb,
-        acoes_validos + fii_validos,
-        n_sim,
-        min_assets,
-        max_assets,
-        min_w,
-        max_w,
-        seed,
-        alpha_dirichlet
-    )
+        # Simulação para FIIs
+        st.session_state.sim_ret_fii, st.session_state.sim_vol_fii, st.session_state.sim_pesos_fii, st.session_state.ativos_fii = simulate_portfolios_cardinalidade_controlada(
+            prices_fii,
+            fii_validos,
+            n_sim,
+            min_assets,
+            max_assets,
+            min_w,
+            max_w,
+            seed,
+            alpha_dirichlet
+        )
+
+        # Simulação para ações + FIIs
+        st.session_state.sim_ret_comb, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, st.session_state.ativos_comb = simulate_portfolios_cardinalidade_controlada(
+            prices_comb,
+            acoes_validos + fii_validos,
+            n_sim,
+            min_assets,
+            max_assets,
+            min_w,
+            max_w,
+            seed,
+            alpha_dirichlet
+        )
+
+        st.session_state.simulacoes_realizadas = True
+
+    # Recupera os dados simulados do session_state
+    sim_ret_aco = st.session_state.sim_ret_aco
+    sim_vol_aco = st.session_state.sim_vol_aco
+    sim_pesos_aco = st.session_state.sim_pesos_aco
+    ativos_aco = st.session_state.ativos_aco
+
+    sim_ret_fii = st.session_state.sim_ret_fii
+    sim_vol_fii = st.session_state.sim_vol_fii
+    sim_pesos_fii = st.session_state.sim_pesos_fii
+    ativos_fii = st.session_state.ativos_fii
+
+    sim_ret_comb = st.session_state.sim_ret_comb
+    sim_vol_comb = st.session_state.sim_vol_comb
+    sim_pesos_comb = st.session_state.sim_pesos_comb
+    ativos_comb = st.session_state.ativos_comb
 
     # Fronteiras eficientes via SLSQP
     ef_vol_aco_opt, ef_ret_aco_opt = compute_efficient_frontier(mu_aco.values, cov_aco.values)
@@ -378,35 +410,91 @@ def main():
 
     # Carteira manual
     st.subheader("Carteira Manual")
-    carteira_manual_input = st.text_area("Digite os ativos e pesos (ex: BBAS3.SA:0.3)", value="BBAS3.SA:0.3\nPETR4.SA:0.2\nVALE3.SA:0.2\nHGLG11.SA:0.3")
-    try:
-        manual_portfolio = dict(line.split(":") for line in carteira_manual_input.strip().split("\n"))
-        manual_portfolio = {k.strip(): float(v.strip()) for k, v in manual_portfolio.items()}
-        client_tickers = list(manual_portfolio.keys())
-        w_man = np.array([manual_portfolio[t] for t in client_tickers])
-        w_man /= w_man.sum()
 
-        prices_manual = prices_comb[client_tickers].dropna()
+    # Entrada da carteira manual
+    num_ativos = st.number_input("Número de ativos na carteira manual", min_value=1, max_value=20, value=4)
+    tickers_man = []
+    pesos_man = []
+
+    cols = st.columns(2)
+    for i in range(num_ativos):
+        with cols[0]:
+            ticker = st.text_input(f"Ticker {i+1}", key=f"ticker_{i}")
+        with cols[1]:
+            peso = st.number_input(f"Peso (%) {i+1}", min_value=0.0, max_value=100.0, value=25.0, key=f"peso_{i}")
+        tickers_man.append(ticker.strip().upper())
+        pesos_man.append(peso / 100.0)
+
+    # Normaliza tickers
+    def normalizar_tickers(lista):
+        return [t.strip().upper() + ".SA" if not t.strip().upper().endswith(".SA") else t.strip().upper() for t in lista]
+
+    tickers_man = normalizar_tickers(tickers_man)
+    w_man = np.array(pesos_man)
+    w_man /= w_man.sum()
+
+    try:
+        prices_manual = prices_comb[tickers_man].dropna()
         rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
         mu_manual = rets_manual.mean() * 252
         cov_manual = rets_manual.cov() * 252
 
-        mu_vec = mu_manual.loc[client_tickers].values
-        cov_mat = cov_manual.loc[client_tickers, client_tickers].values
+        mu_vec = mu_manual.loc[tickers_man].values
+        cov_mat = cov_manual.loc[tickers_man, tickers_man].values
 
+        # Carteira manual original
         ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
         vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
+
+        # Carteira manual otimizada
+        w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w)
+        w_opt_manual = rebalance_weights(w_opt_manual, min_w)
+        ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
+        vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
+
+        # Carteira combinada otimizada
+        w_comb_full, sharpe_full = optimize_max_sharpe(mu_comb.values, cov_comb.values, min_w, max_w)
+        w_comb_full = rebalance_weights(w_comb_full, min_w)
+        serie_full = pd.Series(w_comb_full, index=mu_comb.index).sort_values(ascending=False)
+        ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
+        st.write(f"**Sugestão:** Se você adicionar {ativos_sugeridos}, sua carteira pode melhorar o Sharpe em até {((sharpe_full - sharpe_opt_manual)/sharpe_opt_manual)*100:.1f}%.")
+
+        # Carteira híbrida: 70% manual otimizada + 30% ativos sugeridos
+        tickers_hibrida = tickers_man + ativos_sugeridos
+        w_hibrida = np.zeros(len(tickers_hibrida))
+
+        # 70% da carteira manual otimizada
+        for i, t in enumerate(tickers_man):
+            w_hibrida[i] = 0.7 * w_opt_manual[i]
+
+        # 30% da carteira otimizada com novos ativos
+        for i, t in enumerate(ativos_sugeridos):
+            w_hibrida[len(tickers_man) + i] = 0.3 * serie_full[t]
+
+        w_hibrida /= w_hibrida.sum()
+
+        prices_hibrida = prices_comb[tickers_hibrida].dropna()
+        rets_hibrida = np.log(prices_hibrida / prices_hibrida.shift(1)).dropna()
+        mu_hibrida = rets_hibrida.mean() * 252
+        cov_hibrida = rets_hibrida.cov() * 252
+        mu_vec_h = mu_hibrida.loc[tickers_hibrida].values
+        cov_mat_h = cov_hibrida.loc[tickers_hibrida, tickers_hibrida].values
+
+        ret_hibrida = np.exp(np.dot(w_hibrida, mu_vec_h)) - 1
+        vol_hibrida = np.sqrt(np.dot(w_hibrida.T, np.dot(cov_mat_h, w_hibrida)))
+
     except Exception as e:
         st.error(f"Erro ao processar carteira manual: {e}")
-        ret_man = vol_man = 0.0
+        ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
     # Plotagem
     plot_results(
         sim_vol_aco, np.exp(sim_ret_aco) - 1, ef_vol_aco_opt, np.exp(ef_ret_aco_opt) - 1, vol_aco, ret_aco,
         sim_vol_fii, np.exp(sim_ret_fii) - 1, ef_vol_fii_opt, np.exp(ef_ret_fii_opt) - 1, vol_fii, ret_fii,
         sim_vol_comb, np.exp(sim_ret_comb) - 1, ef_vol_comb_opt, np.exp(ef_ret_comb_opt) - 1, vol_comb, ret_comb,
-        vol_man, ret_man
+        vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida
     )
+
 
     st.subheader("Carteira de Sharpe Máximo – AÇÕES")
     serie_aco = pd.Series(w_sharpe_aco, index=acoes_validos)
