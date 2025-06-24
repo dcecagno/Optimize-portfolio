@@ -410,6 +410,8 @@ def main():
 
     # Carteira manual
     st.subheader("Carteira Manual")
+    pct_otimizado = st.slider("Percentual da carteira com ativos otimizados sugeridos", min_value=0, max_value=100, value=30, step=5) / 100.0
+
 
     # Entrada da carteira manual
     num_ativos = st.number_input("Número de ativos na carteira manual", min_value=1, max_value=20, value=4)
@@ -459,17 +461,17 @@ def main():
         ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
         st.write(f"**Sugestão:** Se você adicionar {ativos_sugeridos}, sua carteira pode melhorar o Sharpe em até {((sharpe_full - sharpe_opt_manual)/sharpe_opt_manual)*100:.1f}%.")
 
-        # Carteira híbrida: 70% manual otimizada + 30% ativos sugeridos
+        # Carteira híbrida: (1 - pct_otimizado) manual otimizada + pct_otimizado ativos sugeridos
         tickers_hibrida = tickers_man + ativos_sugeridos
         w_hibrida = np.zeros(len(tickers_hibrida))
 
-        # 70% da carteira manual otimizada
+        # Parte manual
         for i, t in enumerate(tickers_man):
-            w_hibrida[i] = 0.7 * w_opt_manual[i]
+            w_hibrida[i] = (1 - pct_otimizado) * w_opt_manual[i]
 
-        # 30% da carteira otimizada com novos ativos
+        # Parte otimizada
         for i, t in enumerate(ativos_sugeridos):
-            w_hibrida[len(tickers_man) + i] = 0.3 * serie_full[t]
+            w_hibrida[len(tickers_man) + i] = pct_otimizado * serie_full[t]
 
         w_hibrida /= w_hibrida.sum()
 
