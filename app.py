@@ -420,25 +420,25 @@ def main():
     # Entrada da carteira manual
     num_ativos = st.number_input("Número de ativos na carteira manual", min_value=1, max_value=20, value=4)
     tickers_man = []
-    pesos_man = []
+    valores_man = []
 
     cols = st.columns(2)
     for i in range(num_ativos):
         with cols[0]:
             ticker = st.text_input(f"Ticker {i+1}", key=f"ticker_{i}")
         with cols[1]:
-            peso = st.number_input(f"Peso (%) {i+1}", min_value=0.0, max_value=100.0, value=25.0, key=f"peso_{i}")
+            valor = st.number_input(f"Valor investido (R$) {i+1}", min_value=0.0, value=0.0, key=f"valor_{i}")
         tickers_man.append(ticker.strip().upper())
-        pesos_man.append(peso / 100.0)
+        valores_man.append(valor)
 
-    # Filtra tickers não vazios
-    tickers_man = [t.strip().upper() for t in tickers_man if t.strip()]
-    pesos_man = [p for t, p in zip(tickers_man, pesos_man) if t.strip()]
+    # Filtra tickers não vazios e valores positivos
+    tickers_man = [t for t, v in zip(tickers_man, valores_man) if t and v > 0]
+    valores_man = [v for t, v in zip(tickers_man, valores_man) if t and v > 0]
 
     if tickers_man:
         tickers_man = normalizar_tickers(tickers_man)
-        w_man = np.array(pesos_man)
-        w_man /= w_man.sum()
+        total_investido = sum(valores_man)
+        w_man = np.array([v / total_investido for v in valores_man])
 
         try:
             prices_manual = prices_comb[tickers_man].dropna()
@@ -464,7 +464,21 @@ def main():
             w_comb_full = rebalance_weights(w_comb_full, min_w)
             serie_full = pd.Series(w_comb_full, index=mu_comb.index).sort_values(ascending=False)
             ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
-            st.write(f"**Sugestão:** Se você adicionar {ativos_sugeridos}, sua carteira pode melhorar o Sharpe em até {((sharpe_full - sharpe_opt_manual)/sharpe_opt_manual)*100:.1f}%.")
+            delta_sharpe = sharpe_full - sharpe_opt_manual
+            delta_ret = ret_comb - ret_opt_manual
+            delta_vol = vol_opt_manual - vol_comb
+
+            if delta_sharpe > 0:
+                st.success(
+                    f"**Sugestão:** Se você adicionar mais recursos em {', '.join(ativos_sugeridos)}, "
+                    f"sua carteira pode ter um aumento estimado de **{delta_ret:.2%}** no retorno anual, "
+                    f"com uma redução de **{delta_vol:.2%}** na volatilidade. Isso representa uma melhora no índice de Sharpe."
+                )
+            else:
+                st.warning(
+                    f"**Atenção:** A adição de {', '.join(ativos_sugeridos)} pode não melhorar sua carteira. "
+                    f"Considere revisar os ativos atuais ou ajustar os pesos."
+                )
 
             # Carteira híbrida: (1 - pct_otimizado) manual otimizada + pct_otimizado ativos sugeridos
             tickers_hibrida = tickers_man + ativos_sugeridos
