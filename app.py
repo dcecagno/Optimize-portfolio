@@ -283,13 +283,17 @@ def main():
 
     # Parâmetros para a simulação de Monte Carlo
     n_sim = 100_000
-    min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
-    max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
-    min_w = st.number_input("Peso mínimo por ativo", min_value=0.0, max_value=1.0, value=0.03)
-    max_w = st.number_input("Peso máximo por ativo", min_value=0.0, max_value=1.0, value=0.30)
     seed = 42
     alpha_dirichlet = 1
+    min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
+    max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
+    min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0.0, max_value=100.0, value=3.0, step=1)
+    max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0.0, max_value=100.0, value=30.0, step=1)
 
+    # Converte para proporção (0 a 1)
+    min_w = min_w_percent / 100
+    max_w = max_w_percent / 100
+    
     # Filtra os tickers com base em um mínimo desejado de observações (por exemplo, 200)
     acoes_validos, acoes_problema = filtrar_tickers(prices_read, acoes, min_obs=200)
     fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
