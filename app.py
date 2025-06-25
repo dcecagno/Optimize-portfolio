@@ -431,62 +431,70 @@ def main():
         tickers_man.append(ticker.strip().upper())
         pesos_man.append(peso / 100.0)
 
-    tickers_man = normalizar_tickers(tickers_man)
-    w_man = np.array(pesos_man)
-    w_man /= w_man.sum()
+    # Filtra tickers não vazios
+    tickers_man = [t.strip().upper() for t in tickers_man if t.strip()]
+    pesos_man = [p for t, p in zip(tickers_man, pesos_man) if t.strip()]
 
-    try:
-        prices_manual = prices_comb[tickers_man].dropna()
-        rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
-        mu_manual = rets_manual.mean() * 252
-        cov_manual = rets_manual.cov() * 252
+    if tickers_man:
+        tickers_man = normalizar_tickers(tickers_man)
+        w_man = np.array(pesos_man)
+        w_man /= w_man.sum()
 
-        mu_vec = mu_manual.loc[tickers_man].values
-        cov_mat = cov_manual.loc[tickers_man, tickers_man].values
+        try:
+            prices_manual = prices_comb[tickers_man].dropna()
+            rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
+            mu_manual = rets_manual.mean() * 252
+            cov_manual = rets_manual.cov() * 252
 
-        # Carteira manual original
-        ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
-        vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
+            mu_vec = mu_manual.loc[tickers_man].values
+            cov_mat = cov_manual.loc[tickers_man, tickers_man].values
 
-        # Carteira manual otimizada
-        w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w)
-        w_opt_manual = rebalance_weights(w_opt_manual, min_w)
-        ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
-        vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
+            # Carteira manual original
+            ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
+            vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
 
-        # Carteira combinada otimizada
-        w_comb_full, sharpe_full = optimize_max_sharpe(mu_comb.values, cov_comb.values, min_w, max_w)
-        w_comb_full = rebalance_weights(w_comb_full, min_w)
-        serie_full = pd.Series(w_comb_full, index=mu_comb.index).sort_values(ascending=False)
-        ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
-        st.write(f"**Sugestão:** Se você adicionar {ativos_sugeridos}, sua carteira pode melhorar o Sharpe em até {((sharpe_full - sharpe_opt_manual)/sharpe_opt_manual)*100:.1f}%.")
+            # Carteira manual otimizada
+            w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w)
+            w_opt_manual = rebalance_weights(w_opt_manual, min_w)
+            ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
+            vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
 
-        # Carteira híbrida: (1 - pct_otimizado) manual otimizada + pct_otimizado ativos sugeridos
-        tickers_hibrida = tickers_man + ativos_sugeridos
-        w_hibrida = np.zeros(len(tickers_hibrida))
+            # Carteira combinada otimizada
+            w_comb_full, sharpe_full = optimize_max_sharpe(mu_comb.values, cov_comb.values, min_w, max_w)
+            w_comb_full = rebalance_weights(w_comb_full, min_w)
+            serie_full = pd.Series(w_comb_full, index=mu_comb.index).sort_values(ascending=False)
+            ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
+            st.write(f"**Sugestão:** Se você adicionar {ativos_sugeridos}, sua carteira pode melhorar o Sharpe em até {((sharpe_full - sharpe_opt_manual)/sharpe_opt_manual)*100:.1f}%.")
 
-        # Parte manual
-        for i, t in enumerate(tickers_man):
-            w_hibrida[i] = (1 - pct_otimizado) * w_opt_manual[i]
+            # Carteira híbrida: (1 - pct_otimizado) manual otimizada + pct_otimizado ativos sugeridos
+            tickers_hibrida = tickers_man + ativos_sugeridos
+            w_hibrida = np.zeros(len(tickers_hibrida))
 
-        # Parte otimizada
-        for i, t in enumerate(ativos_sugeridos):
-            w_hibrida[len(tickers_man) + i] = pct_otimizado * serie_full[t]
+            # Parte manual
+            for i, t in enumerate(tickers_man):
+                w_hibrida[i] = (1 - pct_otimizado) * w_opt_manual[i]
 
-        w_hibrida /= w_hibrida.sum()
+            # Parte otimizada
+            for i, t in enumerate(ativos_sugeridos):
+                w_hibrida[len(tickers_man) + i] = pct_otimizado * serie_full[t]
 
-        prices_hibrida = prices_comb[tickers_hibrida].dropna()
-        rets_hibrida = np.log(prices_hibrida / prices_hibrida.shift(1)).dropna()
-        mu_hibrida = rets_hibrida.mean() * 252
-        cov_hibrida = rets_hibrida.cov() * 252
-        mu_vec_h = mu_hibrida.loc[tickers_hibrida].values
-        cov_mat_h = cov_hibrida.loc[tickers_hibrida, tickers_hibrida].values
+            w_hibrida /= w_hibrida.sum()
 
-        ret_hibrida = np.exp(np.dot(w_hibrida, mu_vec_h)) - 1
-        vol_hibrida = np.sqrt(np.dot(w_hibrida.T, np.dot(cov_mat_h, w_hibrida)))
+            prices_hibrida = prices_comb[tickers_hibrida].dropna()
+            rets_hibrida = np.log(prices_hibrida / prices_hibrida.shift(1)).dropna()
+            mu_hibrida = rets_hibrida.mean() * 252
+            cov_hibrida = rets_hibrida.cov() * 252
+            mu_vec_h = mu_hibrida.loc[tickers_hibrida].values
+            cov_mat_h = cov_hibrida.loc[tickers_hibrida, tickers_hibrida].values
 
-    except Exception as e:
-        st.error(f"Erro ao processar carteira manual: {e}")
+            ret_hibrida = np.exp(np.dot(w_hibrida, mu_vec_h)) - 1
+            vol_hibrida = np.sqrt(np.dot(w_hibrida.T, np.dot(cov_mat_h, w_hibrida)))
+
+        except Exception as e:
+            st.error(f"Erro ao processar carteira manual: {e}")
+            ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
+    else:
+        st.warning("Nenhum ticker válido foi inserido na carteira manual.")
         ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
     # Plotagem
