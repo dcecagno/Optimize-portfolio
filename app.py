@@ -427,11 +427,7 @@ def main():
         tickers_man.append(ticker.strip().upper())
         pesos_man.append(peso / 100.0)
 
-    # Normaliza tickers
-    def tickers_normalizados(lista):
-        return [t.strip().upper() + ".SA" if not t.strip().upper().endswith(".SA") else t.strip().upper() for t in lista]
-
-    tickers_man = tickers_normalizados(tickers_man)
+    tickers_man = normalizar_tickers(tickers_man)
     w_man = np.array(pesos_man)
     w_man /= w_man.sum()
 
