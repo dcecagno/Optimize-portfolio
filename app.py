@@ -287,8 +287,8 @@ def main():
     alpha_dirichlet = 1
     min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
     max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
-    min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0.0, max_value=100.0, value=3.0, step=1.0)
-    max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0.0, max_value=100.0, value=30.0, step=1.0)
+    min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
+    max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
 
     # Converte para proporção (0 a 1)
     min_w = min_w_percent / 100
