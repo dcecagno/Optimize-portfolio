@@ -278,8 +278,8 @@ def main():
     acoes_input = st.text_area("Lista de ações (separadas por vírgula)", value="ABEV3.SA, AGRO3.SA, BBAS3.SA, BBDC3.SA, BBSE3.SA, BMOB3.SA, BPAC11.SA, BRAV3.SA, BRBI11.SA, BRSR6.SA, CBAV3.SA, CGRA4.SA, CMIG4.SA, CPFE3.SA, CPLE6.SA, CSAN3.SA, CSMG3.SA, CSUD3.SA, CXSE3.SA, EGIE3.SA, ELET3.SA, ENEV3.SA, ENGI11.SA, EQTL3.SA, FLRY3.SA, GGBR4.SA, GRND3.SA, IRBR3.SA, ISAE4.SA, ITUB4.SA, JBSS3.SA, JHSF3.SA, KEPL3.SA, KLBN11.SA, NEOE3.SA, ODPV3.SA, PETR4.SA, PNVL3.SA, POMO4.SA, PSSA3.SA, PRIO3.SA, RANI3.SA, RECV3.SA, RENT3.SA, RNEW4.SA, SANB11.SA, SAPR4.SA, SBSP3.SA, SUZB3.SA, TAEE11.SA, TIMS3.SA, VALE3.SA, VIVR3.SA, VULC3.SA, WEGE3.SA, WIZC3.SA")
     acoes = normalizar_tickers([x.strip() for x in acoes_input.split(",")]) # acoes = [x.strip() for x in acoes.split(",")]
 
-    fii = st.text_area("Lista de FIIs (separadas por vírgula)", value="BLMG11.SA, BRCO11.SA, KNIP11.SA, LVBI11.SA, MXRF11.SA, BRCR11.SA, BTLG11.SA, CNES11.SA, CPSH11.SA, GARE11.SA, HGLG11.SA, HGRU11.SA, HSML11.SA, PATL11.SA, RBRP11.SA, RBRR11.SA, XPML11.SA")
-    fii = normalizar_tickers([x.strip() for x in fii.split(",")]) # fii = [x.strip() for x in fii.split(",")]
+    fii_input = st.text_area("Lista de FIIs (separadas por vírgula)", value="BLMG11.SA, BRCO11.SA, KNIP11.SA, LVBI11.SA, MXRF11.SA, BRCR11.SA, BTLG11.SA, CNES11.SA, CPSH11.SA, GARE11.SA, HGLG11.SA, HGRU11.SA, HSML11.SA, PATL11.SA, RBRP11.SA, RBRR11.SA, XPML11.SA")
+    fii = normalizar_tickers([x.strip() for x in fii_input.split(",")]) # fii = [x.strip() for x in fii.split(",")]
 
     # Parâmetros para a simulação de Monte Carlo
     n_sim = 100_000
@@ -428,10 +428,10 @@ def main():
         pesos_man.append(peso / 100.0)
 
     # Normaliza tickers
-    def normalizar_tickers(lista):
+    def tickers_normalizados(lista):
         return [t.strip().upper() + ".SA" if not t.strip().upper().endswith(".SA") else t.strip().upper() for t in lista]
 
-    tickers_man = normalizar_tickers(tickers_man)
+    tickers_man = tickers_normalizados(tickers_man)
     w_man = np.array(pesos_man)
     w_man /= w_man.sum()
 
