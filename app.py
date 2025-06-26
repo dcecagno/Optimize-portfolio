@@ -262,11 +262,24 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v3")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v4")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
     
+    # Parâmetros para a simulação de Monte Carlo
+    n_sim = 100_000
+    seed = 42
+    alpha_dirichlet = 1
+    min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
+    max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
+    min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
+    max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
+
+    # Converte para proporção (0 a 1)
+    min_w = min_w_percent / 100
+    max_w = max_w_percent / 100
+
     # Carteira manual
     st.subheader("Carteira Manual")
     pct_otimizado = st.slider("Percentual da carteira com ativos otimizados sugeridos", min_value=0, max_value=100, value=30, step=5) / 100.0
@@ -281,27 +294,24 @@ def main():
         with cols[0]:
             ticker = st.text_input(f"Ticker {i+1}", key=f"ticker_{i}")
         with cols[1]:
-            valor = st.number_input(f"Valor investido (R$) {i+1}", min_value=0.0, value=0.0, key=f"valor_{i}")
+            valor_str = st.text_input(f"Valor investido (R$) {i+1}", key=f"valor_{i}")
+        
         tickers_man.append(ticker.strip().upper())
+
+        try:
+            valor = float(valor_str.replace(",", ".")) if valor_str else 0.0
+        except ValueError:
+            st.warning(f"Valor inválido no ativo {i+1}. Digite um número válido.")
+            valor = 0.0
+
         valores_man.append(valor)
 
     # Filtra tickers não vazios e valores positivos
     tickers_man = [t for t, v in zip(tickers_man, valores_man) if t and v > 0]
     valores_man = [v for t, v in zip(tickers_man, valores_man) if t and v > 0]
 
-    # Parâmetros para a simulação de Monte Carlo
-    n_sim = 100_000
-    seed = 42
-    alpha_dirichlet = 1
-    min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
-    max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
-    min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
-    max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
 
-    # Converte para proporção (0 a 1)
-    min_w = min_w_percent / 100
-    max_w = max_w_percent / 100
-
+    
     # Botão para iniciar a simulação:
     if st.button("Rodar simulação"):
     
@@ -435,6 +445,27 @@ def main():
 
         ret_comb = np.exp(portfolio_return(w_sharpe_comb, mu_comb.values)) - 1
         vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
+
+        # Verifica se há tickers da carteira manual que não estão em prices_comb
+        tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
+
+        if tickers_faltando:
+            st.warning(f"Buscando dados no Yahoo Finance para: {', '.join(tickers_faltando)}")
+            try:
+                novos_dados = yf.download(
+                    tickers_faltando,
+                    start=prices_comb.index.min(),
+                    end=prices_comb.index.max()
+                )['Close']
+
+                if isinstance(novos_dados, pd.Series):
+                    novos_dados = novos_dados.to_frame()
+
+                # Alinha datas e concatena com prices_comb
+                prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
+                prices_comb = prices_comb.sort_index()
+            except Exception as e:
+                st.error(f"Erro ao buscar dados no Yahoo Finance: {e}")
 
         if tickers_man:
             tickers_man = normalizar_tickers(tickers_man)
