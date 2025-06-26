@@ -262,156 +262,11 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v1")
-
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v2")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
-
-    # Período de análise
-    anos = st.slider("Anos de análise", 1, 10, 5)
-    time_end = pd.Timestamp.now().normalize()
-    time_start = time_end - pd.DateOffset(years=anos)
-    prices_read = prices_read.loc[time_start:time_end]
-
-    # Listas de ativos
-    acoes_input = st.text_area("Lista de ações (separadas por vírgula)", value="ABEV3.SA, AGRO3.SA, BBAS3.SA, BBDC3.SA, BBSE3.SA, BMOB3.SA, BPAC11.SA, BRAV3.SA, BRBI11.SA, BRSR6.SA, CBAV3.SA, CGRA4.SA, CMIG4.SA, CPFE3.SA, CPLE6.SA, CSAN3.SA, CSMG3.SA, CSUD3.SA, CXSE3.SA, EGIE3.SA, ELET3.SA, ENEV3.SA, ENGI11.SA, EQTL3.SA, FLRY3.SA, GGBR4.SA, GRND3.SA, IRBR3.SA, ISAE4.SA, ITUB4.SA, JBSS3.SA, JHSF3.SA, KEPL3.SA, KLBN11.SA, NEOE3.SA, ODPV3.SA, PETR4.SA, PNVL3.SA, POMO4.SA, PSSA3.SA, PRIO3.SA, RANI3.SA, RECV3.SA, RENT3.SA, RNEW4.SA, SANB11.SA, SAPR4.SA, SBSP3.SA, SUZB3.SA, TAEE11.SA, TIMS3.SA, VALE3.SA, VIVR3.SA, VULC3.SA, WEGE3.SA, WIZC3.SA")
-    acoes = normalizar_tickers([x.strip() for x in acoes_input.split(",")]) # acoes = [x.strip() for x in acoes.split(",")]
-
-    fii_input = st.text_area("Lista de FIIs (separadas por vírgula)", value="BLMG11.SA, BRCO11.SA, KNIP11.SA, LVBI11.SA, MXRF11.SA, BRCR11.SA, BTLG11.SA, CNES11.SA, CPSH11.SA, GARE11.SA, HGLG11.SA, HGRU11.SA, HSML11.SA, PATL11.SA, RBRP11.SA, RBRR11.SA, XPML11.SA")
-    fii = normalizar_tickers([x.strip() for x in fii_input.split(",")]) # fii = [x.strip() for x in fii.split(",")]
-
-    # Parâmetros para a simulação de Monte Carlo
-    n_sim = 100_000
-    seed = 42
-    alpha_dirichlet = 1
-    min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
-    max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
-    min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
-    max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
-
-    # Converte para proporção (0 a 1)
-    min_w = min_w_percent / 100
-    max_w = max_w_percent / 100
     
-    # Filtra os tickers com base em um mínimo desejado de observações (por exemplo, 200)
-    acoes_validos, acoes_problema = filtrar_tickers(prices_read, acoes, min_obs=200)
-    fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
-
-    st.write("[LOG] Ações válidas:", acoes_validos)
-    st.write("[LOG] Ações problemáticas:", acoes_problema)
-    st.write("[LOG] FIIs válidos:", fii_validos)
-    st.write("[LOG] FIIs problemáticos:", fii_problema)
-    st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
-
-    # Cria os DataFrames filtrados para as simulações
-    prices_aco  = prices_read[acoes_validos]
-    prices_fii  = prices_read[fii_validos]
-    prices_comb = prices_read[acoes_validos + fii_validos]
-
-    # Prepara dados
-    rets_aco = np.log(prices_aco / prices_aco.shift(1)).dropna()
-    mu_aco = rets_aco.mean() * 252
-    cov_aco = rets_aco.cov() * 252
-
-    rets_fii = np.log(prices_fii / prices_fii.shift(1)).dropna()
-    mu_fii = rets_fii.mean() * 252
-    cov_fii = rets_fii.cov() * 252
-
-    rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
-    mu_comb = rets_comb.mean() * 252
-    cov_comb = rets_comb.cov() * 252
-
-    if "simulacoes_realizadas" not in st.session_state:
-        st.session_state.simulacoes_realizadas = False
-
-    if not st.session_state.simulacoes_realizadas:
-        # Simulação para ações
-        st.session_state.sim_ret_aco, st.session_state.sim_vol_aco, st.session_state.sim_pesos_aco, st.session_state.ativos_aco = simulate_portfolios_cardinalidade_controlada(
-            prices_aco,
-            acoes_validos,
-            n_sim,
-            min_assets,
-            max_assets,
-            min_w,
-            max_w,
-            seed,
-            alpha_dirichlet
-        )
-
-        # Simulação para FIIs
-        st.session_state.sim_ret_fii, st.session_state.sim_vol_fii, st.session_state.sim_pesos_fii, st.session_state.ativos_fii = simulate_portfolios_cardinalidade_controlada(
-            prices_fii,
-            fii_validos,
-            n_sim,
-            min_assets,
-            max_assets,
-            min_w,
-            max_w,
-            seed,
-            alpha_dirichlet
-        )
-
-        # Simulação para ações + FIIs
-        st.session_state.sim_ret_comb, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, st.session_state.ativos_comb = simulate_portfolios_cardinalidade_controlada(
-            prices_comb,
-            acoes_validos + fii_validos,
-            n_sim,
-            min_assets,
-            max_assets,
-            min_w,
-            max_w,
-            seed,
-            alpha_dirichlet
-        )
-
-        st.session_state.simulacoes_realizadas = True
-
-    # Recupera os dados simulados do session_state
-    sim_ret_aco = st.session_state.sim_ret_aco
-    sim_vol_aco = st.session_state.sim_vol_aco
-    sim_pesos_aco = st.session_state.sim_pesos_aco
-    ativos_aco = st.session_state.ativos_aco
-
-    sim_ret_fii = st.session_state.sim_ret_fii
-    sim_vol_fii = st.session_state.sim_vol_fii
-    sim_pesos_fii = st.session_state.sim_pesos_fii
-    ativos_fii = st.session_state.ativos_fii
-
-    sim_ret_comb = st.session_state.sim_ret_comb
-    sim_vol_comb = st.session_state.sim_vol_comb
-    sim_pesos_comb = st.session_state.sim_pesos_comb
-    ativos_comb = st.session_state.ativos_comb
-
-    # Fronteiras eficientes via SLSQP
-    ef_vol_aco_opt, ef_ret_aco_opt = compute_efficient_frontier(mu_aco.values, cov_aco.values)
-    ef_vol_aco_opt, ef_ret_aco_opt = filtrar_fronteira_eficiente(ef_vol_aco_opt, ef_ret_aco_opt)
-
-    ef_vol_fii_opt, ef_ret_fii_opt = compute_efficient_frontier(mu_fii.values, cov_fii.values)
-    ef_vol_fii_opt, ef_ret_fii_opt = filtrar_fronteira_eficiente(ef_vol_fii_opt, ef_ret_fii_opt)
-
-    ef_vol_comb_opt, ef_ret_comb_opt = compute_efficient_frontier(mu_comb.values, cov_comb.values)
-    ef_vol_comb_opt, ef_ret_comb_opt = filtrar_fronteira_eficiente(ef_vol_comb_opt, ef_ret_comb_opt)
-
-    # Carteiras de Sharpe máximo
-    w_sharpe_aco, sharpe_aco = optimize_max_sharpe(mu_aco.values, cov_aco.values, 0.0, max_w)
-    w_sharpe_aco = rebalance_weights(w_sharpe_aco, min_w)
-
-    w_sharpe_fii, sharpe_fii = optimize_max_sharpe(mu_fii.values, cov_fii.values, 0.0, max_w)
-    w_sharpe_fii = rebalance_weights(w_sharpe_fii, min_w)
-
-    w_sharpe_comb, sharpe_comb = optimize_max_sharpe(mu_comb.values, cov_comb.values, 0.0, max_w)
-    w_sharpe_comb = rebalance_weights(w_sharpe_comb, min_w)
-
-    ret_aco = np.exp(portfolio_return(w_sharpe_aco, mu_aco.values)) - 1
-    vol_aco = portfolio_volatility(w_sharpe_aco, cov_aco.values)
-
-    ret_fii = np.exp(portfolio_return(w_sharpe_fii, mu_fii.values)) - 1
-    vol_fii = portfolio_volatility(w_sharpe_fii, cov_fii.values)
-
-    ret_comb = np.exp(portfolio_return(w_sharpe_comb, mu_comb.values)) - 1
-    vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
-
     # Carteira manual
     st.subheader("Carteira Manual")
     pct_otimizado = st.slider("Percentual da carteira com ativos otimizados sugeridos", min_value=0, max_value=100, value=30, step=5) / 100.0
@@ -511,41 +366,186 @@ def main():
         st.warning("Nenhum ticker válido foi inserido na carteira manual.")
         ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
+    # Parâmetros para a simulação de Monte Carlo
+    n_sim = 100_000
+    seed = 42
+    alpha_dirichlet = 1
+    min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
+    max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
+    min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
+    max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
 
-    # Plotagem
-    plot_results(
-        sim_vol_aco, np.exp(sim_ret_aco) - 1, ef_vol_aco_opt, np.exp(ef_ret_aco_opt) - 1, vol_aco, ret_aco,
-        sim_vol_fii, np.exp(sim_ret_fii) - 1, ef_vol_fii_opt, np.exp(ef_ret_fii_opt) - 1, vol_fii, ret_fii,
-        sim_vol_comb, np.exp(sim_ret_comb) - 1, ef_vol_comb_opt, np.exp(ef_ret_comb_opt) - 1, vol_comb, ret_comb,
-        vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida
-    )
+    # Converte para proporção (0 a 1)
+    min_w = min_w_percent / 100
+    max_w = max_w_percent / 100
 
+    # Botão para iniciar a simulação:
+    if st.button("Rodar simulação"):
+    
+        # Período de análise
+        anos = st.slider("Anos de análise", 1, 10, 5)
+        time_end = pd.Timestamp.now().normalize()
+        time_start = time_end - pd.DateOffset(years=anos)
+        prices_read = prices_read.loc[time_start:time_end]
 
-    st.subheader("Carteira de Sharpe Máximo – AÇÕES")
-    serie_aco = pd.Series(w_sharpe_aco, index=acoes_validos)
-    serie_aco = serie_aco[serie_aco > 0.001].sort_values(ascending=False)
-    st.dataframe(serie_aco.apply(lambda x: f"{x:.2%}"))
-    st.write(f"**Sharpe:** {sharpe_aco:.4f} | **Retorno:** {ret_aco:.2%} | **Volatilidade:** {vol_aco:.2%}")
+        # Listas de ativos
+        acoes_input = st.text_area("Lista de ações (separadas por vírgula)", value="ABEV3.SA, AGRO3.SA, BBAS3.SA, BBDC3.SA, BBSE3.SA, BMOB3.SA, BPAC11.SA, BRAV3.SA, BRBI11.SA, BRSR6.SA, CBAV3.SA, CGRA4.SA, CMIG4.SA, CPFE3.SA, CPLE6.SA, CSAN3.SA, CSMG3.SA, CSUD3.SA, CXSE3.SA, EGIE3.SA, ELET3.SA, ENEV3.SA, ENGI11.SA, EQTL3.SA, FLRY3.SA, GGBR4.SA, GRND3.SA, IRBR3.SA, ISAE4.SA, ITUB4.SA, JBSS3.SA, JHSF3.SA, KEPL3.SA, KLBN11.SA, NEOE3.SA, ODPV3.SA, PETR4.SA, PNVL3.SA, POMO4.SA, PSSA3.SA, PRIO3.SA, RANI3.SA, RECV3.SA, RENT3.SA, RNEW4.SA, SANB11.SA, SAPR4.SA, SBSP3.SA, SUZB3.SA, TAEE11.SA, TIMS3.SA, VALE3.SA, VIVR3.SA, VULC3.SA, WEGE3.SA, WIZC3.SA")
+        acoes = normalizar_tickers([x.strip() for x in acoes_input.split(",")]) # acoes = [x.strip() for x in acoes.split(",")]
 
-    st.subheader("Carteira de Sharpe Máximo – FIIs")
-    serie_fii = pd.Series(w_sharpe_fii, index=fii_validos)
-    serie_fii = serie_fii[serie_fii > 0.001].sort_values(ascending=False)
-    st.dataframe(serie_fii.apply(lambda x: f"{x:.2%}"))
-    st.write(f"**Sharpe:** {sharpe_fii:.4f} | **Retorno:** {ret_fii:.2%} | **Volatilidade:** {vol_fii:.2%}")
+        fii_input = st.text_area("Lista de FIIs (separadas por vírgula)", value="BLMG11.SA, BRCO11.SA, KNIP11.SA, LVBI11.SA, MXRF11.SA, BRCR11.SA, BTLG11.SA, CNES11.SA, CPSH11.SA, GARE11.SA, HGLG11.SA, HGRU11.SA, HSML11.SA, PATL11.SA, RBRP11.SA, RBRR11.SA, XPML11.SA")
+        fii = normalizar_tickers([x.strip() for x in fii_input.split(",")]) # fii = [x.strip() for x in fii.split(",")]
 
-    st.subheader("Carteira de Sharpe Máximo – COMBINADA")
-    tickers_comb = acoes_validos + fii_validos
-    serie_comb = pd.Series(w_sharpe_comb, index=tickers_comb)
-    serie_comb = serie_comb[serie_comb > 0.001].sort_values(ascending=False)
-    st.dataframe(serie_comb.apply(lambda x: f"{x:.2%}"))
-    st.write(f"**Sharpe:** {sharpe_comb:.4f} | **Retorno:** {ret_comb:.2%} | **Volatilidade:** {vol_comb:.2%}")
+        # Filtra os tickers com base em um mínimo desejado de observações (por exemplo, 200)
+        acoes_validos, acoes_problema = filtrar_tickers(prices_read, acoes, min_obs=200)
+        fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
 
-    # Composição por classe
-    idx_acoes = [i for i, tk in enumerate(tickers_comb) if tk in acoes_validos]
-    idx_fii = [i for i, tk in enumerate(tickers_comb) if tk in fii_validos]
-    pct_acoes = w_sharpe_comb[idx_acoes].sum()
-    pct_fii = w_sharpe_comb[idx_fii].sum()
-    st.write(f"**Composição por classe:** Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
+        st.write("[LOG] Ações válidas:", acoes_validos)
+        st.write("[LOG] Ações problemáticas:", acoes_problema)
+        st.write("[LOG] FIIs válidos:", fii_validos)
+        st.write("[LOG] FIIs problemáticos:", fii_problema)
+        st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
+
+        # Cria os DataFrames filtrados para as simulações
+        prices_aco  = prices_read[acoes_validos]
+        prices_fii  = prices_read[fii_validos]
+        prices_comb = prices_read[acoes_validos + fii_validos]
+
+        # Prepara dados
+        rets_aco = np.log(prices_aco / prices_aco.shift(1)).dropna()
+        mu_aco = rets_aco.mean() * 252
+        cov_aco = rets_aco.cov() * 252
+
+        rets_fii = np.log(prices_fii / prices_fii.shift(1)).dropna()
+        mu_fii = rets_fii.mean() * 252
+        cov_fii = rets_fii.cov() * 252
+
+        rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
+        mu_comb = rets_comb.mean() * 252
+        cov_comb = rets_comb.cov() * 252
+
+        if "simulacoes_realizadas" not in st.session_state:
+            st.session_state.simulacoes_realizadas = False
+
+        if not st.session_state.simulacoes_realizadas:
+            # Simulação para ações
+            st.session_state.sim_ret_aco, st.session_state.sim_vol_aco, st.session_state.sim_pesos_aco, st.session_state.ativos_aco = simulate_portfolios_cardinalidade_controlada(
+                prices_aco,
+                acoes_validos,
+                n_sim,
+                min_assets,
+                max_assets,
+                min_w,
+                max_w,
+                seed,
+                alpha_dirichlet
+            )
+
+            # Simulação para FIIs
+            st.session_state.sim_ret_fii, st.session_state.sim_vol_fii, st.session_state.sim_pesos_fii, st.session_state.ativos_fii = simulate_portfolios_cardinalidade_controlada(
+                prices_fii,
+                fii_validos,
+                n_sim,
+                min_assets,
+                max_assets,
+                min_w,
+                max_w,
+                seed,
+                alpha_dirichlet
+            )
+
+            # Simulação para ações + FIIs
+            st.session_state.sim_ret_comb, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, st.session_state.ativos_comb = simulate_portfolios_cardinalidade_controlada(
+                prices_comb,
+                acoes_validos + fii_validos,
+                n_sim,
+                min_assets,
+                max_assets,
+                min_w,
+                max_w,
+                seed,
+                alpha_dirichlet
+            )
+
+            st.session_state.simulacoes_realizadas = True
+
+        # Recupera os dados simulados do session_state
+        sim_ret_aco = st.session_state.sim_ret_aco
+        sim_vol_aco = st.session_state.sim_vol_aco
+        sim_pesos_aco = st.session_state.sim_pesos_aco
+        ativos_aco = st.session_state.ativos_aco
+
+        sim_ret_fii = st.session_state.sim_ret_fii
+        sim_vol_fii = st.session_state.sim_vol_fii
+        sim_pesos_fii = st.session_state.sim_pesos_fii
+        ativos_fii = st.session_state.ativos_fii
+
+        sim_ret_comb = st.session_state.sim_ret_comb
+        sim_vol_comb = st.session_state.sim_vol_comb
+        sim_pesos_comb = st.session_state.sim_pesos_comb
+        ativos_comb = st.session_state.ativos_comb
+
+        # Fronteiras eficientes via SLSQP
+        ef_vol_aco_opt, ef_ret_aco_opt = compute_efficient_frontier(mu_aco.values, cov_aco.values)
+        ef_vol_aco_opt, ef_ret_aco_opt = filtrar_fronteira_eficiente(ef_vol_aco_opt, ef_ret_aco_opt)
+
+        ef_vol_fii_opt, ef_ret_fii_opt = compute_efficient_frontier(mu_fii.values, cov_fii.values)
+        ef_vol_fii_opt, ef_ret_fii_opt = filtrar_fronteira_eficiente(ef_vol_fii_opt, ef_ret_fii_opt)
+
+        ef_vol_comb_opt, ef_ret_comb_opt = compute_efficient_frontier(mu_comb.values, cov_comb.values)
+        ef_vol_comb_opt, ef_ret_comb_opt = filtrar_fronteira_eficiente(ef_vol_comb_opt, ef_ret_comb_opt)
+
+        # Carteiras de Sharpe máximo
+        w_sharpe_aco, sharpe_aco = optimize_max_sharpe(mu_aco.values, cov_aco.values, 0.0, max_w)
+        w_sharpe_aco = rebalance_weights(w_sharpe_aco, min_w)
+
+        w_sharpe_fii, sharpe_fii = optimize_max_sharpe(mu_fii.values, cov_fii.values, 0.0, max_w)
+        w_sharpe_fii = rebalance_weights(w_sharpe_fii, min_w)
+
+        w_sharpe_comb, sharpe_comb = optimize_max_sharpe(mu_comb.values, cov_comb.values, 0.0, max_w)
+        w_sharpe_comb = rebalance_weights(w_sharpe_comb, min_w)
+
+        ret_aco = np.exp(portfolio_return(w_sharpe_aco, mu_aco.values)) - 1
+        vol_aco = portfolio_volatility(w_sharpe_aco, cov_aco.values)
+
+        ret_fii = np.exp(portfolio_return(w_sharpe_fii, mu_fii.values)) - 1
+        vol_fii = portfolio_volatility(w_sharpe_fii, cov_fii.values)
+
+        ret_comb = np.exp(portfolio_return(w_sharpe_comb, mu_comb.values)) - 1
+        vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
+
+        # Plotagem
+        plot_results(
+            sim_vol_aco, np.exp(sim_ret_aco) - 1, ef_vol_aco_opt, np.exp(ef_ret_aco_opt) - 1, vol_aco, ret_aco,
+            sim_vol_fii, np.exp(sim_ret_fii) - 1, ef_vol_fii_opt, np.exp(ef_ret_fii_opt) - 1, vol_fii, ret_fii,
+            sim_vol_comb, np.exp(sim_ret_comb) - 1, ef_vol_comb_opt, np.exp(ef_ret_comb_opt) - 1, vol_comb, ret_comb,
+            vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida
+        )
+
+        st.subheader("Carteira de Sharpe Máximo – AÇÕES")
+        serie_aco = pd.Series(w_sharpe_aco, index=acoes_validos)
+        serie_aco = serie_aco[serie_aco > 0.001].sort_values(ascending=False)
+        st.dataframe(serie_aco.apply(lambda x: f"{x:.2%}"))
+        st.write(f"**Sharpe:** {sharpe_aco:.4f} | **Retorno:** {ret_aco:.2%} | **Volatilidade:** {vol_aco:.2%}")
+
+        st.subheader("Carteira de Sharpe Máximo – FIIs")
+        serie_fii = pd.Series(w_sharpe_fii, index=fii_validos)
+        serie_fii = serie_fii[serie_fii > 0.001].sort_values(ascending=False)
+        st.dataframe(serie_fii.apply(lambda x: f"{x:.2%}"))
+        st.write(f"**Sharpe:** {sharpe_fii:.4f} | **Retorno:** {ret_fii:.2%} | **Volatilidade:** {vol_fii:.2%}")
+
+        st.subheader("Carteira de Sharpe Máximo – COMBINADA")
+        tickers_comb = acoes_validos + fii_validos
+        serie_comb = pd.Series(w_sharpe_comb, index=tickers_comb)
+        serie_comb = serie_comb[serie_comb > 0.001].sort_values(ascending=False)
+        st.dataframe(serie_comb.apply(lambda x: f"{x:.2%}"))
+        st.write(f"**Sharpe:** {sharpe_comb:.4f} | **Retorno:** {ret_comb:.2%} | **Volatilidade:** {vol_comb:.2%}")
+
+        # Composição por classe
+        idx_acoes = [i for i, tk in enumerate(tickers_comb) if tk in acoes_validos]
+        idx_fii = [i for i, tk in enumerate(tickers_comb) if tk in fii_validos]
+        pct_acoes = w_sharpe_comb[idx_acoes].sum()
+        pct_fii = w_sharpe_comb[idx_fii].sum()
+        st.write(f"**Composição por classe:** Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
 
         
 if __name__ == "__main__":
