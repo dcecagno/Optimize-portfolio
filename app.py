@@ -262,7 +262,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v2")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v3")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -288,83 +288,6 @@ def main():
     # Filtra tickers não vazios e valores positivos
     tickers_man = [t for t, v in zip(tickers_man, valores_man) if t and v > 0]
     valores_man = [v for t, v in zip(tickers_man, valores_man) if t and v > 0]
-
-    if tickers_man:
-        tickers_man = normalizar_tickers(tickers_man)
-        total_investido = sum(valores_man)
-        w_man = np.array([v / total_investido for v in valores_man])
-
-        try:
-            prices_manual = prices_comb[tickers_man].dropna()
-            rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
-            mu_manual = rets_manual.mean() * 252
-            cov_manual = rets_manual.cov() * 252
-
-            mu_vec = mu_manual.loc[tickers_man].values
-            cov_mat = cov_manual.loc[tickers_man, tickers_man].values
-
-            # Carteira manual original
-            ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
-            vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
-
-            # Carteira manual otimizada
-            w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w)
-            w_opt_manual = rebalance_weights(w_opt_manual, min_w)
-            ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
-            vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
-
-            # Carteira combinada otimizada
-            w_comb_full, sharpe_full = optimize_max_sharpe(mu_comb.values, cov_comb.values, min_w, max_w)
-            w_comb_full = rebalance_weights(w_comb_full, min_w)
-            serie_full = pd.Series(w_comb_full, index=mu_comb.index).sort_values(ascending=False)
-            ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
-
-            delta_sharpe = sharpe_full - sharpe_opt_manual
-            delta_ret = ret_comb - ret_opt_manual
-            delta_vol = vol_opt_manual - vol_comb
-
-            if delta_sharpe > 0:
-                st.success(
-                    f"**Sugestão:** Se você adicionar mais recursos em {', '.join(ativos_sugeridos)}, "
-                    f"sua carteira pode ter um aumento estimado de **{delta_ret:.2%}** no retorno anual "
-                    f"e uma redução de **{delta_vol:.2%}** na volatilidade."
-                )
-            else:
-                st.warning(
-                    f"**Atenção:** A adição de {', '.join(ativos_sugeridos)} pode não melhorar sua carteira. "
-                    f"Considere revisar os ativos atuais ou ajustar os pesos."
-                )
-
-            # Carteira híbrida: (1 - pct_otimizado) manual otimizada + pct_otimizado ativos sugeridos
-            tickers_hibrida = tickers_man + ativos_sugeridos
-            w_hibrida = np.zeros(len(tickers_hibrida))
-
-            # Parte manual
-            for i, t in enumerate(tickers_man):
-                w_hibrida[i] = (1 - pct_otimizado) * w_opt_manual[i]
-
-            # Parte otimizada
-            for i, t in enumerate(ativos_sugeridos):
-                w_hibrida[len(tickers_man) + i] = pct_otimizado * serie_full[t]
-
-            w_hibrida /= w_hibrida.sum()
-
-            prices_hibrida = prices_comb[tickers_hibrida].dropna()
-            rets_hibrida = np.log(prices_hibrida / prices_hibrida.shift(1)).dropna()
-            mu_hibrida = rets_hibrida.mean() * 252
-            cov_hibrida = rets_hibrida.cov() * 252
-            mu_vec_h = mu_hibrida.loc[tickers_hibrida].values
-            cov_mat_h = cov_hibrida.loc[tickers_hibrida, tickers_hibrida].values
-
-            ret_hibrida = np.exp(np.dot(w_hibrida, mu_vec_h)) - 1
-            vol_hibrida = np.sqrt(np.dot(w_hibrida.T, np.dot(cov_mat_h, w_hibrida)))
-
-        except Exception as e:
-            st.error(f"Erro ao processar carteira manual: {e}")
-            ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
-    else:
-        st.warning("Nenhum ticker válido foi inserido na carteira manual.")
-        ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
     # Parâmetros para a simulação de Monte Carlo
     n_sim = 100_000
@@ -512,6 +435,83 @@ def main():
 
         ret_comb = np.exp(portfolio_return(w_sharpe_comb, mu_comb.values)) - 1
         vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
+
+        if tickers_man:
+            tickers_man = normalizar_tickers(tickers_man)
+            total_investido = sum(valores_man)
+            w_man = np.array([v / total_investido for v in valores_man])
+
+            try:
+                prices_manual = prices_comb[tickers_man].dropna()
+                rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
+                mu_manual = rets_manual.mean() * 252
+                cov_manual = rets_manual.cov() * 252
+
+                mu_vec = mu_manual.loc[tickers_man].values
+                cov_mat = cov_manual.loc[tickers_man, tickers_man].values
+
+                # Carteira manual original
+                ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
+                vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
+
+                # Carteira manual otimizada
+                w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w)
+                w_opt_manual = rebalance_weights(w_opt_manual, min_w)
+                ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
+                vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
+
+                # Carteira combinada otimizada
+                w_comb_full, sharpe_full = optimize_max_sharpe(mu_comb.values, cov_comb.values, min_w, max_w)
+                w_comb_full = rebalance_weights(w_comb_full, min_w)
+                serie_full = pd.Series(w_comb_full, index=mu_comb.index).sort_values(ascending=False)
+                ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
+
+                delta_sharpe = sharpe_full - sharpe_opt_manual
+                delta_ret = ret_comb - ret_opt_manual
+                delta_vol = vol_opt_manual - vol_comb
+
+                if delta_sharpe > 0:
+                    st.success(
+                        f"**Sugestão:** Se você adicionar mais recursos em {', '.join(ativos_sugeridos)}, "
+                        f"sua carteira pode ter um aumento estimado de **{delta_ret:.2%}** no retorno anual "
+                        f"e uma redução de **{delta_vol:.2%}** na volatilidade."
+                    )
+                else:
+                    st.warning(
+                        f"**Atenção:** A adição de {', '.join(ativos_sugeridos)} pode não melhorar sua carteira. "
+                        f"Considere revisar os ativos atuais ou ajustar os pesos."
+                    )
+
+                # Carteira híbrida: (1 - pct_otimizado) manual otimizada + pct_otimizado ativos sugeridos
+                tickers_hibrida = tickers_man + ativos_sugeridos
+                w_hibrida = np.zeros(len(tickers_hibrida))
+
+                # Parte manual
+                for i, t in enumerate(tickers_man):
+                    w_hibrida[i] = (1 - pct_otimizado) * w_opt_manual[i]
+
+                # Parte otimizada
+                for i, t in enumerate(ativos_sugeridos):
+                    w_hibrida[len(tickers_man) + i] = pct_otimizado * serie_full[t]
+
+                w_hibrida /= w_hibrida.sum()
+
+                prices_hibrida = prices_comb[tickers_hibrida].dropna()
+                rets_hibrida = np.log(prices_hibrida / prices_hibrida.shift(1)).dropna()
+                mu_hibrida = rets_hibrida.mean() * 252
+                cov_hibrida = rets_hibrida.cov() * 252
+                mu_vec_h = mu_hibrida.loc[tickers_hibrida].values
+                cov_mat_h = cov_hibrida.loc[tickers_hibrida, tickers_hibrida].values
+
+                ret_hibrida = np.exp(np.dot(w_hibrida, mu_vec_h)) - 1
+                vol_hibrida = np.sqrt(np.dot(w_hibrida.T, np.dot(cov_mat_h, w_hibrida)))
+
+            except Exception as e:
+                st.error(f"Erro ao processar carteira manual: {e}")
+                ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
+        else:
+            st.warning("Nenhum ticker válido foi inserido na carteira manual.")
+            ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
         # Plotagem
         plot_results(
