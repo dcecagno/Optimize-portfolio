@@ -302,7 +302,7 @@ def main():
     st.write("[LOG] Ações problemáticas:", acoes_problema)
     st.write("[LOG] FIIs válidos:", fii_validos)
     st.write("[LOG] FIIs problemáticos:", fii_problema)
-    st.write("[LOG] Carregando o gráfico. Aguarde!")
+    st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
 
     # Cria os DataFrames filtrados para as simulações
     prices_aco  = prices_read[acoes_validos]
@@ -416,8 +416,7 @@ def main():
     st.subheader("Carteira Manual")
     pct_otimizado = st.slider("Percentual da carteira com ativos otimizados sugeridos", min_value=0, max_value=100, value=30, step=5) / 100.0
 
-
-    # Entrada da carteira manual
+    # Entrada da carteira manual em valores monetários
     num_ativos = st.number_input("Número de ativos na carteira manual", min_value=1, max_value=20, value=4)
     tickers_man = []
     valores_man = []
@@ -464,6 +463,7 @@ def main():
             w_comb_full = rebalance_weights(w_comb_full, min_w)
             serie_full = pd.Series(w_comb_full, index=mu_comb.index).sort_values(ascending=False)
             ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
+
             delta_sharpe = sharpe_full - sharpe_opt_manual
             delta_ret = ret_comb - ret_opt_manual
             delta_vol = vol_opt_manual - vol_comb
@@ -471,8 +471,8 @@ def main():
             if delta_sharpe > 0:
                 st.success(
                     f"**Sugestão:** Se você adicionar mais recursos em {', '.join(ativos_sugeridos)}, "
-                    f"sua carteira pode ter um aumento estimado de **{delta_ret:.2%}** no retorno anual, "
-                    f"com uma redução de **{delta_vol:.2%}** na volatilidade. Isso representa uma melhora no índice de Sharpe."
+                    f"sua carteira pode ter um aumento estimado de **{delta_ret:.2%}** no retorno anual "
+                    f"e uma redução de **{delta_vol:.2%}** na volatilidade."
                 )
             else:
                 st.warning(
@@ -510,6 +510,7 @@ def main():
     else:
         st.warning("Nenhum ticker válido foi inserido na carteira manual.")
         ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
+
 
     # Plotagem
     plot_results(
