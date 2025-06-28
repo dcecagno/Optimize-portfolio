@@ -677,8 +677,13 @@ def main():
         st.write(f"**Composição por classe:** Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
 
         st.subheader("Carteira Manual")
-        serie_man = pd.Series(w_man, index=tickers_man)
-        serie_man = serie_man[serie_man > 0.001].sort_values(ascending=False)
+        serie_man = (
+            pd.Series(w_man, index=tickers_man)
+            .loc[lambda s: s > 0.001]
+            .sort_values(ascending=False)
+            .rename_axis(index="Ticker")     # cabeçalho da coluna de índices
+            .rename("Participação")
+        )
         st.dataframe(serie_man.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_man:.4f} | **Retorno:** {ret_man:.2%} | **Volatilidade:** {vol_man:.2%}")
 
@@ -691,7 +696,11 @@ def main():
         # Se a otimização retornou algo válido, exiba a tabela
         if w_hibrida.size:
             st.subheader(f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)")
-            serie_hibrida = pd.Series(w_hibrida, index=tickers_hibrida).sort_values(ascending=False)
+            serie_hibrida = (
+                pd.Series(w_hibrida, index=tickers_hibrida)
+                    .sort_values(ascending=False)
+                    .rename_axis(index="Ticker")
+                    .rename("Participação"))
             st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
             st.write(
                 f"**Sharpe:** {sharpe_hibrida:.4f} | "
