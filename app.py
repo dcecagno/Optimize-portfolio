@@ -331,7 +331,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v9")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v10")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read_original = _read_close_prices(url)
@@ -557,31 +557,42 @@ def main():
         if tickers_man:
             tickers_man = normalizar_tickers(tickers_man)
             tickers_man = list(dict.fromkeys(tickers_man))
-            
-            # cria pares (ticker, valor) apenas para tickers que agora existem em prices_comb
-            pairs = [(t, v) for t, v in zip(tickers_man, valores_man) if t in prices_comb.columns]
-            if not pairs:
-                st.error("Nenhum ticker da carteira manual foi encontrado em prices_comb após o download. Verifique os tickers.")
-                st.stop()   # ou return, para não continuar quebrando
-            
-            # desempacota novamente em listas
-            tickers_man, valores_man = zip(*pairs)
-            tickers_man, valores_man = list(tickers_man), list(valores_man)
 
-            total_man = sum(valores_man)
-            w_man = np.array([v / total_man for v in valores_man])
+            # 1) Normaliza e deduplica seu input original  
+            orig_pairs = list(dict.fromkeys(zip(tickers_man, valores_man)))  
+            tickers_user, valores_user = zip(*orig_pairs)  
+            tickers_user, valores_user = list(tickers_user), list(valores_user)
+
+            # 2) Filtra só os tickers que agora existem em prices_comb  
+            disponiveis = set(prices_comb.columns)  
+            tickers_man = [t for t in tickers_user if t in disponiveis]  
+            if not tickers_man:  
+                st.error("Nenhum dos tickers da carteira manual foi encontrado nos dados.")  
+                st.stop()  
+
+            # 3) Reconstrói valores_man na mesma ordem filtrada  
+            mapping = dict(zip(tickers_user, valores_user))  
+            valores_man = [mapping[t] for t in tickers_man]
+
+            # Agora **tickers_man** e **valores_man** têm o mesmo comprimento e só contêm ativos válidos!
+            # 4) Vai para os cálculos sem risco de index error
+
+            total_man     = sum(valores_man)
+            w_man         = np.array([v/total_man for v in valores_man])
             tickers_hibrida = []
             w_hibrida       = np.array([])     # array vazio por padrão
             ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
 
+            # Prepara DataFrame alinhado
             prices_manual = prices_comb[tickers_man].dropna()
-            rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
-            mu_manual = rets_manual.mean() * 252
-            cov_manual = rets_manual.cov() * 252
+            rets_manual   = np.log(prices_manual / prices_manual.shift(1)).dropna()
 
-            mu_vec = mu_manual.loc[tickers_man].values
+            mu_manual  = rets_manual.mean() * 252
+            cov_manual = rets_manual.cov()  * 252
+
+            mu_vec  = mu_manual.loc[tickers_man].values
             cov_mat = cov_manual.loc[tickers_man, tickers_man].values
-            
+
             try:
                 # Carteira manual original
                 ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
