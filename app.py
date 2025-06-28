@@ -331,7 +331,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v11")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v12")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read_original = _read_close_prices(url)
@@ -412,9 +412,11 @@ def main():
         fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
 
         st.write("[LOG] Ações carregadas:", acoes_validos)
-        st.write("[LOG] Ações indisponíveis:", acoes_problema)
+        if acoes_problema:
+            st.warning(f"[LOG] Ações indisponíveis ou com poucos dados: {acoes_problema}")
         st.write("[LOG] FIIs carregados:", fii_validos)
-        st.write("[LOG] FIIs indisponíveis:", fii_problema)
+        if fii_problema:
+            st.warning(f"[LOG] FIIs indisponíveis ou com poucos dados: {fii_problema}")
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
 
         # Cria os DataFrames filtrados para as simulações
@@ -602,6 +604,7 @@ def main():
                 # Carteira manual original
                 ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
                 vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
+                sharpe_man = ret_man / vol_man
 
                 # Carteira manual otimizada
                 w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w)
@@ -690,6 +693,18 @@ def main():
         pct_acoes = w_sharpe_comb[idx_acoes].sum()
         pct_fii = w_sharpe_comb[idx_fii].sum()
         st.write(f"**Composição por classe:** Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
+
+        st.subheader("Carteira Manual")
+        serie_man = pd.Series(w_man, index=tickers_man)
+        serie_man = serie_man[serie_man > 0.001].sort_values(ascending=False)
+        st.dataframe(serie_man.apply(lambda x: f"{x:.2%}"))
+        st.write(f"**Sharpe:** {sharpe_man:.4f} | **Retorno:** {ret_man:.2%} | **Volatilidade:** {vol_man:.2%}")
+
+        st.subheader("Carteira Otimizada")
+        serie_opt = pd.Series(w_opt_manual, index=tickers_man)
+        serie_opt = serie_opt[serie_opt > 0.001].sort_values(ascending=False)
+        st.dataframe(serie_opt.apply(lambda x: f"{x:.2%}"))
+        st.write(f"**Sharpe:** {sharpe_opt_manual:.4f} | **Retorno:** {ret_opt_manual:.2%} | **Volatilidade:** {vol_opt_manual:.2%}")
 
         if w_hibrida.size:
             st.subheader(f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)")
