@@ -312,26 +312,26 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
     plt.figure(figsize=(12,8))
 
     # Monte Carlo e Fronteiras
-    plt.scatter(sim_vol_fii, sim_ret_fii, s=8, alpha=0.12, color='green', label='FIIs (Monte Carlo)')
-    plt.plot(ef_vol_fii_opt, ef_ret_fii_opt, 'g-', lw=2, label='Fronteira FIIs')
-    plt.scatter(vol_fii, ret_fii, color='green', marker='*', s=180, label='Sharpe Máx FIIs')
+    plt.scatter(sim_vol_fii, sim_ret_fii, s=8, alpha=0.12, color='green', label='Simulações - FII')
+    plt.plot(ef_vol_fii_opt, ef_ret_fii_opt, 'g-', lw=2, label='Fronteira Eficiente - FIIs')
+    plt.scatter(vol_fii, ret_fii, color='green', marker='*', s=180, label='Sharpe Máx - FII')
 
-    plt.scatter(sim_vol_comb, sim_ret_comb, s=8, alpha=0.12, color='red', label='Combinado (Monte Carlo)')
-    plt.plot(ef_vol_comb_opt, ef_ret_comb_opt, 'r-', lw=2, label='Fronteira Combinada')
-    plt.scatter(vol_comb, ret_comb, color='red', marker='*', s=180, label='Sharpe Máx Combinado')
+    plt.scatter(sim_vol_aco, sim_ret_aco, s=8, alpha=0.12, color='blue', label='Simulações - Ações')
+    plt.plot(ef_vol_aco_opt, ef_ret_aco_opt, 'b-', lw=2, label='Fronteira Eficiente - Ações')
+    plt.scatter(vol_aco, ret_aco, color='blue', marker='*', s=180, label='Sharpe Máx - Ações')
 
-    plt.scatter(sim_vol_aco, sim_ret_aco, s=8, alpha=0.12, color='blue', label='Ações (Monte Carlo)')
-    plt.plot(ef_vol_aco_opt, ef_ret_aco_opt, 'b-', lw=2, label='Fronteira Ações')
-    plt.scatter(vol_aco, ret_aco, color='blue', marker='*', s=180, label='Sharpe Máx Ações')
+    plt.scatter(sim_vol_comb, sim_ret_comb, s=8, alpha=0.12, color='red', label='Simulações - Ações + FII')
+    plt.plot(ef_vol_comb_opt, ef_ret_comb_opt, 'r-', lw=2, label='Fronteira Eficiente - Ações + FII')
+    plt.scatter(vol_comb, ret_comb, color='red', marker='*', s=180, label='Sharpe Máx - Ações + FII')
 
     # Carteiras manuais
     plt.scatter(vol_man, ret_man, c="black", s=80, marker="X", label="Carteira Manual")
     plt.scatter(vol_opt_manual, ret_opt_manual, c="orange", s=80, marker="D", label="Manual Otimizada")
-    plt.scatter(vol_hibrida, ret_hibrida, c="purple", s=80, marker="P", label="Carteira Híbrida")
+    plt.scatter(vol_hibrida, ret_hibrida, c="purple", s=80, marker="P", label="Carteira Manual com Inclusão")
 
     plt.xlabel("Volatilidade Anualizada")
     plt.ylabel("Retorno Anualizado")
-    plt.title("Fronteira Eficiente – Ações x FIIs x Combinado")
+    plt.title("Fronteira Eficiente – Ações x FIIs x (Ações + FII)")
     plt.legend()
     plt.grid(True)
     plt.gca().xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
@@ -343,7 +343,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v13")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v15")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read_original = _read_close_prices(url)
@@ -411,7 +411,11 @@ def main():
 
     # Botão para iniciar a simulação:
     if st.button("Rodar simulação"):
-    
+
+        st.write("**Esta não é uma recomendação de investimento.**")
+        st.write("**Rentabilidade passada não é garantia de rentabilidade futura.**")
+        st.write("**Utilize para fins de estudo.**")
+
         # Listas de ativos
         acoes_input = st.text_area("Lista de ações (separadas por vírgula)", value="ABEV3.SA, AGRO3.SA, BBAS3.SA, BBDC3.SA, BBSE3.SA, BMOB3.SA, BPAC11.SA, BRAV3.SA, BRBI11.SA, BRSR6.SA, CBAV3.SA, CGRA4.SA, CMIG4.SA, CPFE3.SA, CPLE6.SA, CSAN3.SA, CSMG3.SA, CSUD3.SA, CXSE3.SA, EGIE3.SA, ELET3.SA, ENEV3.SA, ENGI11.SA, EQTL3.SA, FLRY3.SA, GGBR4.SA, GRND3.SA, IRBR3.SA, ISAE4.SA, ITUB4.SA, JBSS3.SA, JHSF3.SA, KEPL3.SA, KLBN11.SA, NEOE3.SA, ODPV3.SA, PETR4.SA, PNVL3.SA, POMO4.SA, PSSA3.SA, PRIO3.SA, RANI3.SA, RECV3.SA, RENT3.SA, RNEW4.SA, SANB11.SA, SAPR4.SA, SBSP3.SA, SUZB3.SA, TAEE11.SA, TIMS3.SA, VALE3.SA, VIVR3.SA, VULC3.SA, WEGE3.SA, WIZC3.SA")
         acoes = normalizar_tickers([x.strip() for x in acoes_input.split(",")]) # acoes = [x.strip() for x in acoes.split(",")]
@@ -423,9 +427,6 @@ def main():
         acoes_validos, acoes_problema = filtrar_tickers(prices_read, acoes, min_obs=200)
         fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
 
-        st.write("Esta não é uma recomendação de investimento.")
-        st.write("Rentabilidade passada não é garantia de rentabilidade futura.")
-        st.write("Utilize para fins de estudo.")
         st.write("[LOG] Ações carregadas:", acoes_validos)
         if acoes_problema:
             st.warning(f"[LOG] Ações indisponíveis ou com poucos dados: {acoes_problema}")
@@ -658,6 +659,7 @@ def main():
             pd.Series(w_sharpe_aco, index=acoes_validos)
             .loc[lambda s: s > 0.001]
             .sort_values(ascending=False)
+            .rename(index=lambda x: x.replace(".SA", ""))
             .rename_axis(index="Ticker")
             .rename("Participação")
         )
@@ -669,6 +671,7 @@ def main():
             pd.Series(w_sharpe_fii, index=fii_validos)
             .loc[lambda s: s > 0.001]
             .sort_values(ascending=False)
+            .rename(index=lambda x: x.replace(".SA", ""))
             .rename_axis(index="Ticker")
             .rename("Participação")
         )
@@ -681,6 +684,7 @@ def main():
             pd.Series(w_sharpe_comb, index=tickers_comb)
             .loc[lambda s: s > 0.001]
             .sort_values(ascending=False)
+            .rename(index=lambda x: x.replace(".SA", ""))
             .rename_axis(index="Ticker")
             .rename("Participação")
         )
@@ -699,6 +703,7 @@ def main():
             pd.Series(w_man, index=tickers_man)
             .loc[lambda s: s > 0.001]
             .sort_values(ascending=False)
+            .rename(index=lambda x: x.replace(".SA", ""))
             .rename_axis(index="Ticker")
             .rename("Participação")
         )
@@ -711,6 +716,7 @@ def main():
             pd.Series(w_opt_manual, index=tickers_man)
             .loc[lambda s: s > 0.001]
             .sort_values(ascending=False)
+            .rename(index=lambda x: x.replace(".SA", ""))
             .rename_axis(index="Ticker")
             .rename("Participação")
         )
@@ -723,8 +729,10 @@ def main():
             serie_hibrida = (
                 pd.Series(w_hibrida, index=tickers_hibrida)
                     .sort_values(ascending=False)
+                    .rename(index=lambda x: x.replace(".SA", ""))
                     .rename_axis(index="Ticker")
-                    .rename("Participação"))
+                    .rename("Participação")
+                    )
             adicionados = [tk for tk in tickers_hibrida if tk not in tickers_man]
             if adicionados:
                 st.markdown(f"Para melhorar a relação Risco x Retorno, você pode adicionar à sua carteira {', '.join(adicionados)}")
