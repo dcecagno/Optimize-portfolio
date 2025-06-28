@@ -162,7 +162,7 @@ def simulate_portfolios_cardinalidade_controlada(
 # Funções de Otimização
 # =======================
 
-def negative_sharpe(w):
+def negative_sharpe(w, mu, cov):
     ret = np.dot(mu, w)
     vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
     return -ret / vol
@@ -172,7 +172,7 @@ def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0):
     init = np.repeat(1/n, n)
     bounds = [(min_w, max_w)] * n
     cons = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
-    res = minimize(negative_sharpe, init, method='SLSQP', bounds=bounds, constraints=cons)
+    res = minimize(negative_sharpe, init, args=(mu, cov), method='SLSQP', bounds=bounds, constraints=cons)
     return res.x, -res.fun
 
 def portfolio_return(w, mu):
@@ -291,10 +291,16 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v6")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v7")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
+    
+    # Período de análise
+    anos = st.slider("Anos de análise", 1, 10, 5)
+    time_end = pd.Timestamp.now().normalize()
+    time_start = time_end - pd.DateOffset(years=anos)
+    prices_read = prices_read.loc[time_start:time_end]
     
     # Parâmetros para a simulação de Monte Carlo
     n_sim = 100_000
@@ -346,12 +352,6 @@ def main():
     # Botão para iniciar a simulação:
     if st.button("Rodar simulação"):
     
-        # Período de análise
-        anos = st.slider("Anos de análise", 1, 10, 5)
-        time_end = pd.Timestamp.now().normalize()
-        time_start = time_end - pd.DateOffset(years=anos)
-        prices_read = prices_read.loc[time_start:time_end]
-
         # Listas de ativos
         acoes_input = st.text_area("Lista de ações (separadas por vírgula)", value="ABEV3.SA, AGRO3.SA, BBAS3.SA, BBDC3.SA, BBSE3.SA, BMOB3.SA, BPAC11.SA, BRAV3.SA, BRBI11.SA, BRSR6.SA, CBAV3.SA, CGRA4.SA, CMIG4.SA, CPFE3.SA, CPLE6.SA, CSAN3.SA, CSMG3.SA, CSUD3.SA, CXSE3.SA, EGIE3.SA, ELET3.SA, ENEV3.SA, ENGI11.SA, EQTL3.SA, FLRY3.SA, GGBR4.SA, GRND3.SA, IRBR3.SA, ISAE4.SA, ITUB4.SA, JBSS3.SA, JHSF3.SA, KEPL3.SA, KLBN11.SA, NEOE3.SA, ODPV3.SA, PETR4.SA, PNVL3.SA, POMO4.SA, PSSA3.SA, PRIO3.SA, RANI3.SA, RECV3.SA, RENT3.SA, RNEW4.SA, SANB11.SA, SAPR4.SA, SBSP3.SA, SUZB3.SA, TAEE11.SA, TIMS3.SA, VALE3.SA, VIVR3.SA, VULC3.SA, WEGE3.SA, WIZC3.SA")
         acoes = normalizar_tickers([x.strip() for x in acoes_input.split(",")]) # acoes = [x.strip() for x in acoes.split(",")]
