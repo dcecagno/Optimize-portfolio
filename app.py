@@ -331,7 +331,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v10")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v11")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read_original = _read_close_prices(url)
@@ -558,18 +558,26 @@ def main():
             tickers_man = normalizar_tickers(tickers_man)
             tickers_man = list(dict.fromkeys(tickers_man))
 
-            # 1) Normaliza e deduplica seu input original  
-            orig_pairs = list(dict.fromkeys(zip(tickers_man, valores_man)))  
-            tickers_user, valores_user = zip(*orig_pairs)  
-            tickers_user, valores_user = list(tickers_user), list(valores_user)
+            # 1) Normalize e dedupe o input original:
+            tickers_norm, valores_norm = zip(*dict.fromkeys(zip(
+                normalizar_tickers(tickers_man), valores_man
+            )))
+            tickers_norm, valores_norm = list(tickers_norm), list(valores_norm)
 
-            # 2) Filtra só os tickers que agora existem em prices_comb  
-            disponiveis = set(prices_comb.columns)  
-            tickers_man = [t for t in tickers_user if t in disponiveis]  
-            if not tickers_man:  
-                st.error("Nenhum dos tickers da carteira manual foi encontrado nos dados.")  
-                st.stop()  
+            # 2) Filtra SÓ os tickers que realmente estão em prices_comb.columns
+            validos = set(prices_comb.columns)
+            tickers_man, valores_man = [], []
+            for t, v in zip(tickers_norm, valores_norm):
+                if t in validos:
+                    tickers_man.append(t)
+                    valores_man.append(v)
+                else:
+                    st.warning(f"Ticker removido (sem dados): {t}")
 
+            if not tickers_man:
+                st.error("Não sobrou nenhum ticker válido para a carteira manual.")
+                st.stop()
+ 
             # 3) Reconstrói valores_man na mesma ordem filtrada  
             mapping = dict(zip(tickers_user, valores_user))  
             valores_man = [mapping[t] for t in tickers_man]
