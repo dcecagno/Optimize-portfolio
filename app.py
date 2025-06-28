@@ -162,16 +162,15 @@ def simulate_portfolios_cardinalidade_controlada(
 # Funções de Otimização
 # =======================
 
+def negative_sharpe(w):
+    ret = np.dot(mu, w)
+    vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
+    return -ret / vol
+    
 def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0):
     n = len(mu)
     init = np.repeat(1/n, n)
     bounds = [(min_w, max_w)] * n
-
-    def negative_sharpe(w):
-        ret = np.dot(mu, w)
-        vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
-        return -ret / vol
-
     cons = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
     res = minimize(negative_sharpe, init, method='SLSQP', bounds=bounds, constraints=cons)
     return res.x, -res.fun
@@ -218,6 +217,37 @@ def rebalance_weights(weights, min_w=0.03):
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
 
+def otimizar_carteira_hibrida(tickers_man, valores_man, ativos_sugeridos, mu_comb, cov_comb, percentual_adicional=0.3):
+    total_hibrido = sum(valores_man) * (1 + percentual_adicional)
+    pesos_minimos = {t: v / total_hibrido for t, v in zip(tickers_man, valores_man)}
+    tickers_hibrida = tickers_man + ativos_sugeridos
+    mu_hibrida = mu_comb.loc[tickers_hibrida]
+    cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
+
+    idx_map = {t: i for i, t in enumerate(tickers_hibrida)}
+    constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
+    for t, min_w in pesos_minimos.items():
+        i = idx_map[t]
+        constraints.append({'type': 'ineq', 'fun': lambda w, i=i, min_w=min_w: w[i] - min_w})
+
+    bounds = [(0, 1)] * len(tickers_hibrida)
+    init = np.repeat(1 / len(tickers_hibrida), len(tickers_hibrida))
+
+    res = minimize(
+        negative_sharpe,
+        init,
+        args=(mu_hibrida.values, cov_hibrida.values),
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints
+    )
+
+    w_hibrida = res.x
+    ret_hibrida = np.exp(np.dot(w_hibrida, mu_hibrida.values)) - 1
+    vol_hibrida = np.sqrt(np.dot(w_hibrida.T, np.dot(cov_hibrida.values, w_hibrida)))
+    sharpe_hibrida = (np.dot(w_hibrida, mu_hibrida.values)) / vol_hibrida
+
+    return tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida
 
 # =======================
 # Funções de Plotagem
@@ -256,13 +286,12 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
     plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
     st.pyplot(plt)
 
-
 # =======================
 # Bloco Principal
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v5")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v6")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -524,19 +553,21 @@ def main():
                         f"Considere revisar os ativos atuais ou ajustar os pesos."
                     )
 
-                # Carteira híbrida: (1 - pct_otimizado) manual otimizada + pct_otimizado ativos sugeridos
-                tickers_hibrida = tickers_man + ativos_sugeridos
-                w_hibrida = np.zeros(len(tickers_hibrida))
 
-                # Parte manual
-                for i, t in enumerate(tickers_man):
-                    w_hibrida[i] = (1 - pct_otimizado) * w_opt_manual[i]
+                percentual_adicional = st.slider(
+                    "Percentual adicional para otimização da carteira híbrida (%)",
+                    min_value=0,
+                    max_value=100,
+                    value=30,
+                    step=5
+                ) / 100.0
 
-                # Parte otimizada
-                for i, t in enumerate(ativos_sugeridos):
-                    w_hibrida[len(tickers_man) + i] = pct_otimizado * serie_full[t]
+                
+                tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = otimizar_carteira_hibrida(
+                    tickers_man, valores_man, ativos_sugeridos, mu_comb, cov_comb, percentual_adicional
+                )
 
-                w_hibrida /= w_hibrida.sum()
+
 
                 prices_hibrida = prices_comb[tickers_hibrida].dropna()
                 rets_hibrida = np.log(prices_hibrida / prices_hibrida.shift(1)).dropna()
@@ -588,6 +619,13 @@ def main():
         pct_acoes = w_sharpe_comb[idx_acoes].sum()
         pct_fii = w_sharpe_comb[idx_fii].sum()
         st.write(f"**Composição por classe:** Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
+
+        st.subheader("Carteira Híbrida Otimizada (com 30% adicionais)")
+        serie_hibrida = pd.Series(w_hibrida, index=tickers_hibrida)
+        serie_hibrida = serie_hibrida[serie_hibrida > 0.001].sort_values(ascending=False)
+        st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
+        st.write(f"**Sharpe:** {sharpe_hibrida:.4f} | **Retorno:** {ret_hibrida:.2%} | **Volatilidade:** {vol_hibrida:.2%}")
+
 
         
 if __name__ == "__main__":
