@@ -216,39 +216,7 @@ def rebalance_weights(weights, min_w=0.03):
 
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
-"""
-def otimizar_carteira_hibrida(tickers_man, valores_man, ativos_sugeridos, mu_comb, cov_comb, percentual_adicional=0.3):
-    total_hibrido = sum(valores_man) * (1 + percentual_adicional)
-    pesos_minimos = {t: v / total_hibrido for t, v in zip(tickers_man, valores_man)}
-    tickers_hibrida = tickers_man + ativos_sugeridos
-    mu_hibrida = mu_comb.loc[tickers_hibrida]
-    cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
 
-    idx_map = {t: i for i, t in enumerate(tickers_hibrida)}
-    constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
-    for t, min_w in pesos_minimos.items():
-        i = idx_map[t]
-        constraints.append({'type': 'ineq', 'fun': lambda w, i=i, min_w=min_w: w[i] - min_w})
-
-    bounds = [(0, 1)] * len(tickers_hibrida)
-    init = np.repeat(1 / len(tickers_hibrida), len(tickers_hibrida))
-
-    res = minimize(
-        negative_sharpe,
-        init,
-        args=(mu_hibrida.values, cov_hibrida.values),
-        method='SLSQP',
-        bounds=bounds,
-        constraints=constraints
-    )
-
-    w_hibrida = res.x
-    ret_hibrida = np.exp(np.dot(w_hibrida, mu_hibrida.values)) - 1
-    vol_hibrida = np.sqrt(np.dot(w_hibrida.T, np.dot(cov_hibrida.values, w_hibrida)))
-    sharpe_hibrida = (np.dot(w_hibrida, mu_hibrida.values)) / vol_hibrida
-
-    return tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida
-"""
 def otimizar_carteira_hibrida(
     tickers_man: list,
     valores_man: list,
@@ -257,11 +225,6 @@ def otimizar_carteira_hibrida(
     cov_comb: pd.DataFrame,
     percentual_adicional: float = 0.3
 ):
-    """
-    Monta uma carteira mista onde:
-      - Tickes_man já possuem pesos mínimos (v / total_hibrido)
-      - Os novos ativos (ativos_sugeridos) recebem o restante até percentual_adicional
-    """
     # 1) Calcular o "total híbrido" (= 100% da carteira manual + pct adicional)
     total_hibrido = sum(valores_man) * (1 + percentual_adicional)
 
