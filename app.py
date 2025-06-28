@@ -262,7 +262,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v4")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v5")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -310,6 +310,8 @@ def main():
     tickers_man = [t for t, v in zip(tickers_man, valores_man) if t and v > 0]
     valores_man = [v for t, v in zip(tickers_man, valores_man) if t and v > 0]
 
+    # Normaliza os tickers para garantir o formato correto (ex: PETR3 → PETR3.SA)
+    tickers_man = normalizar_tickers(tickers_man)
 
     
     # Botão para iniciar a simulação:
@@ -460,6 +462,15 @@ def main():
 
                 if isinstance(novos_dados, pd.Series):
                     novos_dados = novos_dados.to_frame()
+                    novos_dados.columns = tickers_faltando
+                else:
+                    novos_dados = novos_dados[tickers_faltando]
+
+                prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
+                prices_comb = prices_comb.sort_index()
+            except Exception as e:
+                st.error(f"Erro ao buscar dados no Yahoo Finance: {e}")
+
 
                 # Alinha datas e concatena com prices_comb
                 prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
@@ -564,7 +575,7 @@ def main():
         st.dataframe(serie_fii.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_fii:.4f} | **Retorno:** {ret_fii:.2%} | **Volatilidade:** {vol_fii:.2%}")
 
-        st.subheader("Carteira de Sharpe Máximo – COMBINADA")
+        st.subheader("Carteira de Sharpe Máximo – AÇÕES E FIIs")
         tickers_comb = acoes_validos + fii_validos
         serie_comb = pd.Series(w_sharpe_comb, index=tickers_comb)
         serie_comb = serie_comb[serie_comb > 0.001].sort_values(ascending=False)
