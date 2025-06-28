@@ -343,7 +343,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v15")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v16")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read_original = _read_close_prices(url)
@@ -734,8 +734,16 @@ def main():
                     .rename("Participação")
                     )
             adicionados = [tk for tk in tickers_hibrida if tk not in tickers_man]
-            if adicionados:
-                st.markdown(f"Para melhorar a relação Risco x Retorno, você pode adicionar à sua carteira {', '.join(adicionados)}")
+            adicionados = [t.replace(".SA", "") for t in adicionados]
+            if len(adicionados) == 1:
+                texto = adicionados[0]
+            else:
+                texto = ", ".join(adicionados[:-1]) + " e " + adicionados[-1]
+
+            st.markdown(
+                "Para melhorar a relação Risco x Retorno, você pode adicionar "
+                f"à sua carteira {texto}"
+            )
             st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
             st.write(
                 f"**Sharpe:** {sharpe_hibrida:.4f} | "
