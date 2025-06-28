@@ -291,7 +291,15 @@ def otimizar_carteira_hibrida(
     vol_h = np.sqrt(w_hibrida.dot(cov_h).dot(w_hibrida))
     sharpe_h = ret_h / vol_h
 
-    return tickers_hibrida, w_hibrida, ret_h, vol_h, sharpe_h
+    limiar = 1e-6
+    ativos_nonzero = [(t, w) for t, w in zip(tickers_hibrida, w_hibrida) if w > limiar]
+    if ativos_nonzero:
+        tickers_hibrida, w_hibrida = zip(*ativos_nonzero)
+    else:
+        tickers_hibrida, w_hibrida = [], np.array([])
+
+    return list(tickers_hibrida), np.array(w_hibrida), ret_h, vol_h, sharpe_h
+
 
 # =======================
 # Funções de Plotagem
