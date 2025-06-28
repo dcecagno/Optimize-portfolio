@@ -343,7 +343,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v12")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v13")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read_original = _read_close_prices(url)
@@ -423,6 +423,9 @@ def main():
         acoes_validos, acoes_problema = filtrar_tickers(prices_read, acoes, min_obs=200)
         fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
 
+        st.write("Esta não é uma recomendação de investimento.")
+        st.write("Rentabilidade passada não é garantia de rentabilidade futura.")
+        st.write("Utilize para fins de estudo.")
         st.write("[LOG] Ações carregadas:", acoes_validos)
         if acoes_problema:
             st.warning(f"[LOG] Ações indisponíveis ou com poucos dados: {acoes_problema}")
@@ -651,21 +654,36 @@ def main():
         )
 
         st.subheader("Carteira de Sharpe Máximo – AÇÕES")
-        serie_aco = pd.Series(w_sharpe_aco, index=acoes_validos)
-        serie_aco = serie_aco[serie_aco > 0.001].sort_values(ascending=False)
+        serie_aco = (
+            pd.Series(w_sharpe_aco, index=acoes_validos)
+            .loc[lambda s: s > 0.001]
+            .sort_values(ascending=False)
+            .rename_axis(index="Ticker")
+            .rename("Participação")
+        )
         st.dataframe(serie_aco.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_aco:.4f} | **Retorno:** {ret_aco:.2%} | **Volatilidade:** {vol_aco:.2%}")
 
         st.subheader("Carteira de Sharpe Máximo – FIIs")
-        serie_fii = pd.Series(w_sharpe_fii, index=fii_validos)
-        serie_fii = serie_fii[serie_fii > 0.001].sort_values(ascending=False)
+        serie_fii = (
+            pd.Series(w_sharpe_fii, index=fii_validos)
+            .loc[lambda s: s > 0.001]
+            .sort_values(ascending=False)
+            .rename_axis(index="Ticker")
+            .rename("Participação")
+        )
         st.dataframe(serie_fii.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_fii:.4f} | **Retorno:** {ret_fii:.2%} | **Volatilidade:** {vol_fii:.2%}")
 
         st.subheader("Carteira de Sharpe Máximo – AÇÕES E FIIs")
         tickers_comb = acoes_validos + fii_validos
-        serie_comb = pd.Series(w_sharpe_comb, index=tickers_comb)
-        serie_comb = serie_comb[serie_comb > 0.001].sort_values(ascending=False)
+        serie_comb = (
+            pd.Series(w_sharpe_comb, index=tickers_comb)
+            .loc[lambda s: s > 0.001]
+            .sort_values(ascending=False)
+            .rename_axis(index="Ticker")
+            .rename("Participação")
+        )
         st.dataframe(serie_comb.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_comb:.4f} | **Retorno:** {ret_comb:.2%} | **Volatilidade:** {vol_comb:.2%}")
 
@@ -681,15 +699,21 @@ def main():
             pd.Series(w_man, index=tickers_man)
             .loc[lambda s: s > 0.001]
             .sort_values(ascending=False)
-            .rename_axis(index="Ticker")     # cabeçalho da coluna de índices
+            .rename_axis(index="Ticker")
             .rename("Participação")
         )
         st.dataframe(serie_man.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_man:.4f} | **Retorno:** {ret_man:.2%} | **Volatilidade:** {vol_man:.2%}")
 
         st.subheader("Carteira Otimizada")
-        serie_opt = pd.Series(w_opt_manual, index=tickers_man)
-        serie_opt = serie_opt[serie_opt > 0.001].sort_values(ascending=False)
+        st.write("Carteira remanejando a participação das empresas que você escolheu")
+        serie_opt = (
+            pd.Series(w_opt_manual, index=tickers_man)
+            .loc[lambda s: s > 0.001]
+            .sort_values(ascending=False)
+            .rename_axis(index="Ticker")
+            .rename("Participação")
+        )
         st.dataframe(serie_opt.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_opt_manual:.4f} | **Retorno:** {ret_opt_manual:.2%} | **Volatilidade:** {vol_opt_manual:.2%}")
 
@@ -701,6 +725,9 @@ def main():
                     .sort_values(ascending=False)
                     .rename_axis(index="Ticker")
                     .rename("Participação"))
+            adicionados = [tk for tk in tickers_hibrida if tk not in tickers_man]
+            if adicionados:
+                st.markdown(f"Para melhorar a relação Risco x Retorno, você pode adicionar à sua carteira {', '.join(adicionados)}")
             st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
             st.write(
                 f"**Sharpe:** {sharpe_hibrida:.4f} | "
