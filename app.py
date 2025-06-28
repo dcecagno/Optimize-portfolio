@@ -331,10 +331,11 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v7")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v8")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
-    prices_read = _read_close_prices(url)
+    prices_read_original = _read_close_prices(url)
+    prices_read = prices_read_original.copy()
     
     # Período de análise
     anos = st.slider("Anos de análise", 1, 10, 5)
@@ -410,10 +411,10 @@ def main():
         acoes_validos, acoes_problema = filtrar_tickers(prices_read, acoes, min_obs=200)
         fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
 
-        st.write("[LOG] Ações válidas:", acoes_validos)
-        st.write("[LOG] Ações problemáticas:", acoes_problema)
-        st.write("[LOG] FIIs válidos:", fii_validos)
-        st.write("[LOG] FIIs problemáticos:", fii_problema)
+        st.write("[LOG] Ações carregadas:", acoes_validos)
+        st.write("[LOG] Ações indisponíveis:", acoes_problema)
+        st.write("[LOG] FIIs carregados:", fii_validos)
+        st.write("[LOG] FIIs indisponíveis:", fii_problema)
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
 
         # Cria os DataFrames filtrados para as simulações
@@ -580,15 +581,20 @@ def main():
                 # Carteira híbrida
                 ativos_all = prices_comb.columns.to_list()
                 idx_man    = [ativos_all.index(t) for t in tickers_man]
-                idx_otros  = [i for i in range(len(ativos_all)) if i not in idx_man]
+                idx_out  = [i for i in range(len(ativos_all)) if i not in idx_man]
 
                 # 3) máscara de carteiras válidas:
                 min_man = w_man / (1 + percentual_adicional)
                 max_extra = percentual_adicional / (1 + percentual_adicional)
 
                 mask_man  = np.all(sim_pesos_comb[:, idx_man] >= min_man[None,:], axis=1)
-                mask_extr = (sim_pesos_comb[:, idx_otros].sum(axis=1) <= max_extra)
+                mask_extr = (sim_pesos_comb[:, idx_out].sum(axis=1) <= max_extra)
                 valid_idx = np.where(mask_man & mask_extr)[0]
+
+                # 4) Defaults (caso nenhuma híbrida seja válida)
+                tickers_hibrida = []
+                w_hibrida       = np.array([])
+                ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
 
                 if valid_idx.size == 0:
                     st.warning("Não há carteiras híbridas válidas no Monte Carlo. Tente diminuir o percentual adicional ou reduzir restrições.")
@@ -597,19 +603,23 @@ def main():
                     w_hibrida = np.zeros(len(ativos_all))
                     ret_hibrida = vol_hibrida = sharpe_hibrida = np.nan
                 else:
-                    # 4) escolhe a híbrida de maior Sharpe
+                    # 5) escolhe a híbrida de maior Sharpe
                     sharpe_sim = (sim_ret_comb / sim_vol_comb)[valid_idx]
                     best = valid_idx[np.argmax(sharpe_sim)]
                     w_star = sim_pesos_comb[best]
                     ret_hibrida, vol_hibrida = sim_ret_comb[best], sim_vol_comb[best]
                     sharpe_hibrida = sharpe_sim.max()
-                    tickers_hibrida = ativos_all  # todo peso zero será descartado nos plots
-
-                    # 5) filtra ativos com peso > min_w para plots/tabelas
-                    ativos_all      = prices_comb.columns.to_list()
-                    tickers_hibrida = [t for i, t in enumerate(ativos_all) if w_star[i] > min_w]
-                    w_hibrida       = np.array([w for w in w_star if w > min_w])
-               
+                    tickers_hibrida = [
+                        ativos_all[i] for i in range(len(ativos_all))
+                        if (i in idx_man and w_star[i] >= min_man[idx_man.index(i)]) 
+                        or (i in idx_out and w_star[i] > 0)
+                    ]
+                    w_hibrida = np.array([
+                        w_star[i] for i in range(len(ativos_all))
+                        if (i in idx_man and w_star[i] >= min_man[idx_man.index(i)]) 
+                        or (i in idx_out and w_star[i] > 0)
+                    ])
+                
             except Exception as e:
                 st.error(f"Erro ao processar carteira manual: {e}")
                 ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
@@ -651,11 +661,19 @@ def main():
         pct_fii = w_sharpe_comb[idx_fii].sum()
         st.write(f"**Composição por classe:** Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
 
-        st.subheader("Carteira Híbrida Otimizada (com 30% adicionais)")
-        serie_hibrida = pd.Series(w_hibrida, index=tickers_hibrida)
-        serie_hibrida = serie_hibrida[serie_hibrida > 0.001].sort_values(ascending=False)
-        st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
-        st.write(f"**Sharpe:** {sharpe_hibrida:.4f} | **Retorno:** {ret_hibrida:.2%} | **Volatilidade:** {vol_hibrida:.2%}")
+        if w_hibrida.size:
+            st.subheader(f"Carteira Híbrida Otimizada (com {int(p*100)}% adicionais)")
+            serie_hibrida = pd.Series(w_hibrida, index=tickers_hibrida)
+            serie_hibrida = serie_hibrida.sort_values(ascending=False)
+            st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
+            st.write(
+                f"**Sharpe:** {sharpe_hibrida:.4f}  |  "
+                f"**Retorno:** {ret_hibrida:.2%}  |  "
+                f"**Volatilidade:** {vol_hibrida:.2%}"
+            )
+        else:
+            st.info("Nenhuma carteira híbrida válida para exibir. Ajuste o percentual adicional ou as restrições.")
+
      
 if __name__ == "__main__":
     main()
