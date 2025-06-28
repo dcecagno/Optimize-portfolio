@@ -216,7 +216,7 @@ def rebalance_weights(weights, min_w=0.03):
 
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
-
+"""
 def otimizar_carteira_hibrida(tickers_man, valores_man, ativos_sugeridos, mu_comb, cov_comb, percentual_adicional=0.3):
     total_hibrido = sum(valores_man) * (1 + percentual_adicional)
     pesos_minimos = {t: v / total_hibrido for t, v in zip(tickers_man, valores_man)}
@@ -248,6 +248,83 @@ def otimizar_carteira_hibrida(tickers_man, valores_man, ativos_sugeridos, mu_com
     sharpe_hibrida = (np.dot(w_hibrida, mu_hibrida.values)) / vol_hibrida
 
     return tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida
+"""
+def otimizar_carteira_hibrida(
+    tickers_man: list,
+    valores_man: list,
+    ativos_sugeridos: list,
+    mu_comb: pd.Series,
+    cov_comb: pd.DataFrame,
+    percentual_adicional: float = 0.3
+):
+    """
+    Monta uma carteira mista onde:
+      - Tickes_man já possuem pesos mínimos (v / total_hibrido)
+      - Os novos ativos (ativos_sugeridos) recebem o restante até percentual_adicional
+    """
+    # 1) Calcular o "total híbrido" (= 100% da carteira manual + pct adicional)
+    total_hibrido = sum(valores_man) * (1 + percentual_adicional)
+
+    # 2) Pesos mínimos obrigatórios para cada ativo manual
+    pesos_minimos = {
+        t: v / total_hibrido
+        for t, v in zip(tickers_man, valores_man)
+    }
+
+    # 3) Combinar tickers
+    tickers_hibrida = tickers_man + ativos_sugeridos
+
+    # 4) Extrair mu e cov para todos
+    mu_h    = mu_comb.loc[tickers_hibrida].values
+    cov_h   = cov_comb.loc[tickers_hibrida, tickers_hibrida].values
+
+    # 5) Índices para pesos
+    idx_map = {t: i for i, t in enumerate(tickers_hibrida)}
+    idx_manual    = [idx_map[t] for t in tickers_man]
+    idx_sugeridos = [idx_map[t] for t in ativos_sugeridos]
+
+    # 6) Montar constraints:
+    cons = []
+    # 6.1 soma dos pesos = 1
+    cons.append({'type': 'eq', 'fun': lambda w: w.sum() - 1})
+
+    # 6.2 cada manual w[i] >= peso_minimo[i]
+    for t, min_w in pesos_minimos.items():
+        i = idx_map[t]
+        cons.append({
+            'type': 'ineq',
+            'fun': lambda w, i=i, min_w=min_w: w[i] - min_w
+        })
+
+    # 6.3 soma dos pesos de ativos_sugeridos ≤ percentual_adicional / (1 + percentual_adicional)
+    max_extra = percentual_adicional / (1 + percentual_adicional)
+    cons.append({
+        'type': 'ineq',
+        'fun': lambda w: max_extra - w[idx_sugeridos].sum()
+    })
+
+    # 7) Bounds [0,1] para cada w
+    bounds = [(0.0, 1.0)] * len(tickers_hibrida)
+
+    # 8) Chute inicial (distribuição uniforme)
+    init = np.repeat(1 / len(tickers_hibrida), len(tickers_hibrida))
+
+    # 9) Executar otimização de Sharpe (negativo)
+    res = minimize(
+        negative_sharpe,
+        init,
+        args=(mu_h, cov_h),
+        method='SLSQP',
+        bounds=bounds,
+        constraints=cons
+    )
+
+    w_hibrida = res.x
+    ret_h = w_hibrida.dot(mu_h)
+    vol_h = np.sqrt(w_hibrida.dot(cov_h).dot(w_hibrida))
+    sharpe_h = ret_h / vol_h
+
+    return tickers_hibrida, w_hibrida, ret_h, vol_h, sharpe_h
 
 # =======================
 # Funções de Plotagem
@@ -317,8 +394,7 @@ def main():
 
     # Carteira manual
     st.subheader("Carteira Manual")
-    pct_otimizado = st.slider("Percentual da carteira com ativos otimizados sugeridos", min_value=0, max_value=100, value=30, step=5) / 100.0
-
+    
     # Entrada da carteira manual em valores monetários
     num_ativos = st.number_input("Número de ativos na carteira manual", min_value=1, max_value=20, value=4)
     tickers_man = []
@@ -348,7 +424,15 @@ def main():
     # Normaliza os tickers para garantir o formato correto (ex: PETR3 → PETR3.SA)
     tickers_man = normalizar_tickers(tickers_man)
 
-    
+    st.subheader("Carteira Otimizada")
+    percentual_adicional = st.slider(
+                    "Percentual adicional para otimização da carteira híbrida (%)",
+                    min_value=0,
+                    max_value=100,
+                    value=30,
+                    step=5
+                ) / 100.0
+
     # Botão para iniciar a simulação:
     if st.button("Rodar simulação"):
     
@@ -500,7 +584,6 @@ def main():
             except Exception as e:
                 st.error(f"Erro ao buscar dados no Yahoo Finance: {e}")
 
-
                 # Alinha datas e concatena com prices_comb
                 prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
                 prices_comb = prices_comb.sort_index()
@@ -509,8 +592,8 @@ def main():
 
         if tickers_man:
             tickers_man = normalizar_tickers(tickers_man)
-            total_investido = sum(valores_man)
-            w_man = np.array([v / total_investido for v in valores_man])
+            total_man = sum(valores_man)
+            w_man = np.array([v / total_man for v in valores_man])
 
             try:
                 prices_manual = prices_comb[tickers_man].dropna()
@@ -531,54 +614,39 @@ def main():
                 ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
                 vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
 
-                # Carteira combinada otimizada
-                w_comb_full, sharpe_full = optimize_max_sharpe(mu_comb.values, cov_comb.values, min_w, max_w)
-                w_comb_full = rebalance_weights(w_comb_full, min_w)
-                serie_full = pd.Series(w_comb_full, index=mu_comb.index).sort_values(ascending=False)
-                ativos_sugeridos = [a for a in serie_full.index if a not in tickers_man][:3]
+                # Carteira híbrida
+                ativos_all = prices_comb.columns.to_list()
+                idx_man    = [ativos_all.index(t) for t in tickers_man]
+                idx_otros  = [i for i in range(len(ativos_all)) if i not in idx_man]
 
-                delta_sharpe = sharpe_full - sharpe_opt_manual
-                delta_ret = ret_comb - ret_opt_manual
-                delta_vol = vol_opt_manual - vol_comb
+                # 3) máscara de carteiras válidas:
+                min_man = w_man / (1 + percentual_adicional)
+                max_extra = percentual_adicional / (1 + percentual_adicional)
 
-                if delta_sharpe > 0:
-                    st.success(
-                        f"**Sugestão:** Se você adicionar mais recursos em {', '.join(ativos_sugeridos)}, "
-                        f"sua carteira pode ter um aumento estimado de **{delta_ret:.2%}** no retorno anual "
-                        f"e uma redução de **{delta_vol:.2%}** na volatilidade."
-                    )
+                mask_man  = np.all(sim_pesos_comb[:, idx_man] >= min_man[None,:], axis=1)
+                mask_extr = (sim_pesos_comb[:, idx_otros].sum(axis=1) <= max_extra)
+                valid_idx = np.where(mask_man & mask_extr)[0]
+
+                if valid_idx.size == 0:
+                    st.warning("Não há carteiras híbridas válidas no Monte Carlo. Tente diminuir o percentual adicional ou reduzir restrições.")
+                    # fallback: não otimiza híbrida
+                    tickers_hibrida = []
+                    w_hibrida = np.zeros(len(ativos_all))
+                    ret_hibrida = vol_hibrida = sharpe_hibrida = np.nan
                 else:
-                    st.warning(
-                        f"**Atenção:** A adição de {', '.join(ativos_sugeridos)} pode não melhorar sua carteira. "
-                        f"Considere revisar os ativos atuais ou ajustar os pesos."
-                    )
+                    # 4) escolhe a híbrida de maior Sharpe
+                    sharpe_sim = (sim_ret_comb / sim_vol_comb)[valid_idx]
+                    best = valid_idx[np.argmax(sharpe_sim)]
+                    w_star = sim_pesos_comb[best]
+                    ret_hibrida, vol_hibrida = sim_ret_comb[best], sim_vol_comb[best]
+                    sharpe_hibrida = sharpe_sim.max()
+                    tickers_hibrida = ativos_all  # todo peso zero será descartado nos plots
 
-
-                percentual_adicional = st.slider(
-                    "Percentual adicional para otimização da carteira híbrida (%)",
-                    min_value=0,
-                    max_value=100,
-                    value=30,
-                    step=5
-                ) / 100.0
-
-                
-                tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = otimizar_carteira_hibrida(
-                    tickers_man, valores_man, ativos_sugeridos, mu_comb, cov_comb, percentual_adicional
-                )
-
-
-
-                prices_hibrida = prices_comb[tickers_hibrida].dropna()
-                rets_hibrida = np.log(prices_hibrida / prices_hibrida.shift(1)).dropna()
-                mu_hibrida = rets_hibrida.mean() * 252
-                cov_hibrida = rets_hibrida.cov() * 252
-                mu_vec_h = mu_hibrida.loc[tickers_hibrida].values
-                cov_mat_h = cov_hibrida.loc[tickers_hibrida, tickers_hibrida].values
-
-                ret_hibrida = np.exp(np.dot(w_hibrida, mu_vec_h)) - 1
-                vol_hibrida = np.sqrt(np.dot(w_hibrida.T, np.dot(cov_mat_h, w_hibrida)))
-
+                    # 5) filtra ativos com peso > min_w para plots/tabelas
+                    ativos_all      = prices_comb.columns.to_list()
+                    tickers_hibrida = [t for i, t in enumerate(ativos_all) if w_star[i] > min_w]
+                    w_hibrida       = np.array([w for w in w_star if w > min_w])
+               
             except Exception as e:
                 st.error(f"Erro ao processar carteira manual: {e}")
                 ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
@@ -625,8 +693,6 @@ def main():
         serie_hibrida = serie_hibrida[serie_hibrida > 0.001].sort_values(ascending=False)
         st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_hibrida:.4f} | **Retorno:** {ret_hibrida:.2%} | **Volatilidade:** {vol_hibrida:.2%}")
-
-
-        
+     
 if __name__ == "__main__":
     main()
