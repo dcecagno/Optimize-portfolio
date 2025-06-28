@@ -555,32 +555,29 @@ def main():
                 st.error(f"Erro ao buscar dados no Yahoo Finance: {e}")
 
         if tickers_man:
-            tickers_man = normalizar_tickers(tickers_man)
-            tickers_man = list(dict.fromkeys(tickers_man))
+            pares = list(dict.fromkeys(
+                zip(normalizar_tickers(tickers_man), valores_man)
+            ))
+            tickers_man, valores_man = zip(*pares)
+            tickers_man, valores_man = list(tickers_man), list(valores_man)
 
-            # 1) Normalize e dedupe o input original:
-            tickers_norm, valores_norm = zip(*dict.fromkeys(zip(
-                normalizar_tickers(tickers_man), valores_man
-            )))
-            tickers_norm, valores_norm = list(tickers_norm), list(valores_norm)
 
             # 2) Filtra SÓ os tickers que realmente estão em prices_comb.columns
-            validos = set(prices_comb.columns)
-            tickers_man, valores_man = [], []
-            for t, v in zip(tickers_norm, valores_norm):
-                if t in validos:
-                    tickers_man.append(t)
-                    valores_man.append(v)
+            disponiveis = set(prices_comb.columns)
+            filt_tickers = []
+            filt_valores = []
+            for t, v in zip(tickers_man, valores_man):
+                if t in disponiveis:
+                    filt_tickers.append(t)
+                    filt_valores.append(v)
                 else:
-                    st.warning(f"Ticker removido (sem dados): {t}")
+                    st.warning(f"Sem dados para {t}, removido da carteira manual.")
 
-            if not tickers_man:
-                st.error("Não sobrou nenhum ticker válido para a carteira manual.")
+            if not filt_tickers:
+                st.error("Após o filtro, não sobrou nenhum ticker válido.")
                 st.stop()
- 
-            # 3) Reconstrói valores_man na mesma ordem filtrada  
-            mapping = dict(zip(tickers_user, valores_user))  
-            valores_man = [mapping[t] for t in tickers_man]
+
+            tickers_man, valores_man = filt_tickers, filt_valores
 
             # Agora **tickers_man** e **valores_man** têm o mesmo comprimento e só contêm ativos válidos!
             # 4) Vai para os cálculos sem risco de index error
@@ -614,8 +611,8 @@ def main():
 
                 # Carteira híbrida
                 ativos_all = prices_comb.columns.to_list()
-                idx_man    = [ativos_all.index(t) for t in tickers_man]
-                idx_out  = [i for i in range(len(ativos_all)) if i not in idx_man]
+                idx_man = [ativos_all.index(t) for t in tickers_man]
+                idx_out = [i for i in range(len(ativos_all)) if i not in idx_man]
 
                 # 3) máscara de carteiras válidas:
                 min_man = w_man / (1 + percentual_adicional)
@@ -639,7 +636,8 @@ def main():
                     sharpe_sim = (sim_ret_comb / sim_vol_comb)[valid_idx]
                     best = valid_idx[np.argmax(sharpe_sim)]
                     w_star = sim_pesos_comb[best]
-                    ret_hibrida, vol_hibrida = sim_ret_comb[best], sim_vol_comb[best]
+                    ret_hibrida = sim_ret_comb[best]
+                    vol_hibrida = sim_vol_comb[best]
                     sharpe_hibrida = sharpe_sim.max()
                     tickers_hibrida = [
                         ativos_all[i] for i in range(len(ativos_all))
