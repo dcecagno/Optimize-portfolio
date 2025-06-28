@@ -331,7 +331,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v8")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v9")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read_original = _read_close_prices(url)
@@ -556,18 +556,33 @@ def main():
 
         if tickers_man:
             tickers_man = normalizar_tickers(tickers_man)
+            tickers_man = list(dict.fromkeys(tickers_man))
+            
+            # cria pares (ticker, valor) apenas para tickers que agora existem em prices_comb
+            pairs = [(t, v) for t, v in zip(tickers_man, valores_man) if t in prices_comb.columns]
+            if not pairs:
+                st.error("Nenhum ticker da carteira manual foi encontrado em prices_comb após o download. Verifique os tickers.")
+                st.stop()   # ou return, para não continuar quebrando
+            
+            # desempacota novamente em listas
+            tickers_man, valores_man = zip(*pairs)
+            tickers_man, valores_man = list(tickers_man), list(valores_man)
+
             total_man = sum(valores_man)
             w_man = np.array([v / total_man for v in valores_man])
+            tickers_hibrida = []
+            w_hibrida       = np.array([])     # array vazio por padrão
+            ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
 
+            prices_manual = prices_comb[tickers_man].dropna()
+            rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
+            mu_manual = rets_manual.mean() * 252
+            cov_manual = rets_manual.cov() * 252
+
+            mu_vec = mu_manual.loc[tickers_man].values
+            cov_mat = cov_manual.loc[tickers_man, tickers_man].values
+            
             try:
-                prices_manual = prices_comb[tickers_man].dropna()
-                rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
-                mu_manual = rets_manual.mean() * 252
-                cov_manual = rets_manual.cov() * 252
-
-                mu_vec = mu_manual.loc[tickers_man].values
-                cov_mat = cov_manual.loc[tickers_man, tickers_man].values
-
                 # Carteira manual original
                 ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
                 vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
@@ -599,9 +614,7 @@ def main():
                 if valid_idx.size == 0:
                     st.warning("Não há carteiras híbridas válidas no Monte Carlo. Tente diminuir o percentual adicional ou reduzir restrições.")
                     # fallback: não otimiza híbrida
-                    tickers_hibrida = []
-                    w_hibrida = np.zeros(len(ativos_all))
-                    ret_hibrida = vol_hibrida = sharpe_hibrida = np.nan
+                    
                 else:
                     # 5) escolhe a híbrida de maior Sharpe
                     sharpe_sim = (sim_ret_comb / sim_vol_comb)[valid_idx]
@@ -662,7 +675,7 @@ def main():
         st.write(f"**Composição por classe:** Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
 
         if w_hibrida.size:
-            st.subheader(f"Carteira Híbrida Otimizada (com {int(p*100)}% adicionais)")
+            st.subheader(f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)")
             serie_hibrida = pd.Series(w_hibrida, index=tickers_hibrida)
             serie_hibrida = serie_hibrida.sort_values(ascending=False)
             st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
@@ -673,7 +686,6 @@ def main():
             )
         else:
             st.info("Nenhuma carteira híbrida válida para exibir. Ajuste o percentual adicional ou as restrições.")
-
      
 if __name__ == "__main__":
     main()
