@@ -234,6 +234,10 @@ def otimizar_carteira_hibrida(
         for t, v in zip(tickers_man, valores_man)
     }
 
+    if not ativos_sugeridos:
+        # monta a lista de candidatos: tudo em mu_comb, menos os manuais
+        ativos_sugeridos = [t for t in mu_comb.index if t not in tickers_man]
+
     # 3) Combinar tickers
     tickers_hibrida = tickers_man + ativos_sugeridos
 
@@ -612,46 +616,16 @@ def main():
                 ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
                 vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
 
-                # Carteira híbrida
-                ativos_all = prices_comb.columns.to_list()
-                idx_man = [ativos_all.index(t) for t in tickers_man]
-                idx_out = [i for i in range(len(ativos_all)) if i not in idx_man]
-
-                # 3) máscara de carteiras válidas:
-                min_man = w_man / (1 + percentual_adicional)
-                max_extra = percentual_adicional / (1 + percentual_adicional)
-
-                mask_man  = np.all(sim_pesos_comb[:, idx_man] >= min_man[None,:], axis=1)
-                mask_extr = (sim_pesos_comb[:, idx_out].sum(axis=1) <= max_extra)
-                valid_idx = np.where(mask_man & mask_extr)[0]
-
-                # 4) Defaults (caso nenhuma híbrida seja válida)
-                tickers_hibrida = []
-                w_hibrida       = np.array([])
-                ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
-
-                if valid_idx.size == 0:
-                    st.warning("Não há carteiras híbridas válidas no Monte Carlo. Tente diminuir o percentual adicional ou reduzir restrições.")
-                    # fallback: não otimiza híbrida
-                    
-                else:
-                    # 5) escolhe a híbrida de maior Sharpe
-                    sharpe_sim = (sim_ret_comb / sim_vol_comb)[valid_idx]
-                    best = valid_idx[np.argmax(sharpe_sim)]
-                    w_star = sim_pesos_comb[best]
-                    ret_hibrida = sim_ret_comb[best]
-                    vol_hibrida = sim_vol_comb[best]
-                    sharpe_hibrida = sharpe_sim.max()
-                    tickers_hibrida = [
-                        ativos_all[i] for i in range(len(ativos_all))
-                        if (i in idx_man and w_star[i] >= min_man[idx_man.index(i)]) 
-                        or (i in idx_out and w_star[i] > 0)
-                    ]
-                    w_hibrida = np.array([
-                        w_star[i] for i in range(len(ativos_all))
-                        if (i in idx_man and w_star[i] >= min_man[idx_man.index(i)]) 
-                        or (i in idx_out and w_star[i] > 0)
-                    ])
+                # Carteira Híbrida – via SLSQP, mantendo pesos mínimos manuais e teto extra  
+                tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = \
+                    otimizar_carteira_hibrida(
+                        tickers_man,          # 1) lista de manuais
+                        valores_man,          # 2) valores correspondentes
+                        [],                   # 3) ativos_sugeridos → vazio faz a função escolher
+                        mu_comb,              # 4) pd.Series de retornos combinados
+                        cov_comb,             # 5) pd.DataFrame de covariâncias combinadas
+                        percentual_adicional  # 6) float em [0,1]
+                    )
                 
             except Exception as e:
                 st.error(f"Erro ao processar carteira manual: {e}")
@@ -706,18 +680,18 @@ def main():
         st.dataframe(serie_opt.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_opt_manual:.4f} | **Retorno:** {ret_opt_manual:.2%} | **Volatilidade:** {vol_opt_manual:.2%}")
 
+        # Se a otimização retornou algo válido, exiba a tabela
         if w_hibrida.size:
             st.subheader(f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)")
-            serie_hibrida = pd.Series(w_hibrida, index=tickers_hibrida)
-            serie_hibrida = serie_hibrida.sort_values(ascending=False)
+            serie_hibrida = pd.Series(w_hibrida, index=tickers_hibrida).sort_values(ascending=False)
             st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
             st.write(
-                f"**Sharpe:** {sharpe_hibrida:.4f}  |  "
-                f"**Retorno:** {ret_hibrida:.2%}  |  "
+                f"**Sharpe:** {sharpe_hibrida:.4f} | "
+                f"**Retorno:** {ret_hibrida:.2%} | "
                 f"**Volatilidade:** {vol_hibrida:.2%}"
             )
         else:
-            st.info("Nenhuma carteira híbrida válida para exibir. Ajuste o percentual adicional ou as restrições.")
+            st.warning("Não foi possível otimizar a carteira híbrida sob essas restrições.")
      
 if __name__ == "__main__":
     main()
