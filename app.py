@@ -339,11 +339,11 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
     ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
     
     max_vol = max(sim_vol_aco.max(), sim_vol_fii.max(), sim_vol_comb.max())
+    ax.set_xlim(0, max_vol * 1.15)
+
     max_ret = max(sim_ret_aco.max(), sim_ret_fii.max(), sim_ret_comb.max())
     min_ret = min(sim_ret_aco.min(), sim_ret_fii.min(), sim_ret_comb.min())
-
-    ax.set_xlim(0, max_vol * 1.15)
-    ax.set_ylim(min_ret * 0.85, max_ret * 1.15)
+    ax.set_ylim(min_ret * 1.15, max_ret * 1.15)
 
     st.pyplot(plt)
 
