@@ -546,7 +546,7 @@ def main():
 
         # Matriz de correlação
         # supondo que tickers_hibrida seja sua lista final
-        cov_h_aco = cov_aco.loc[acoes_validos, acoes_validos]
+        cov_h_aco = cov_aco.loc[w_sharpe_aco, w_sharpe_aco]
 
         # calcula o desvio padrão de cada ativo
         std_aco = np.sqrt(np.diag(cov_h_aco))
@@ -554,8 +554,8 @@ def main():
         corr_aco = cov_h_aco.values / np.outer(std_aco, std_aco)
         corr_aco = pd.DataFrame(
             corr_aco,
-            index=acoes_validos,
-            columns=acoes_validos
+            index=w_sharpe_aco,
+            columns=w_sharpe_aco
         )
 
         st.subheader("Matriz de Correlação (via covariância)")
