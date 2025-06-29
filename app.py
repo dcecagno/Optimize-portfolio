@@ -439,7 +439,12 @@ def render_portfolio_section(
         return
 
     # 2) Tabela + métricas
-    st.subheader(f"Carteira – {name}")
+    st.markdown(
+        f"<h3 style='text-align: center;'>{name}</h3>",
+        unsafe_allow_html=True
+    )
+
+    st.subheader({name})
     st.dataframe(serie.apply(lambda x: f"{x:.2%}"), use_container_width=True)
     st.write(
         f"**Sharpe:** {sharpe:.2f} | "
@@ -1523,7 +1528,6 @@ def main():
                     )
                 cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
 
-
             except Exception as e:
                 st.error(f"Erro ao processar carteira manual: {e}")
                 ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
@@ -1548,7 +1552,6 @@ def main():
             (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)", w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida),
         ]
 
-
         for (nome, w, ticks, cov, s, r, v) in cenarios:
             render_portfolio_section(
                 name=nome,
@@ -1561,115 +1564,5 @@ def main():
                 min_weight=0.001
             )
 
-
-
-        st.subheader("Carteira de Sharpe Máximo – AÇÕES")
-        serie_aco = (
-            pd.Series(w_sharpe_aco, index=acoes_validos)
-            .loc[lambda s: s > 0.001]
-            .sort_values(ascending=False)
-            .rename(index=lambda x: x.replace(".SA", ""))
-            .rename_axis(index="Ticker")
-            .rename("Participação")
-        )
-        st.dataframe(serie_aco.apply(lambda x: f"{x:.2%}"))
-        st.write(f"**Sharpe:** {sharpe_aco:.4f} | **Retorno:** {ret_aco:.2%} | **Volatilidade:** {vol_aco:.2%}")
-
-        st.subheader("Matriz de Correlação — Heatmap")
-        plot_correlation_heatmap(
-                cov_df=cov_aco,
-                weights=w_sharpe_aco,
-                tickers=acoes_validos,
-                min_weight=0.001,
-                title="Correlação – Ações (Sharpe Máximo)"
-            )
-
-        st.subheader("Carteira de Sharpe Máximo – FIIs")
-        serie_fii = (
-            pd.Series(w_sharpe_fii, index=fii_validos)
-            .loc[lambda s: s > 0.001]
-            .sort_values(ascending=False)
-            .rename(index=lambda x: x.replace(".SA", ""))
-            .rename_axis(index="Ticker")
-            .rename("Participação")
-        )
-        st.dataframe(serie_fii.apply(lambda x: f"{x:.2%}"))
-        st.write(f"**Sharpe:** {sharpe_fii:.4f} | **Retorno:** {ret_fii:.2%} | **Volatilidade:** {vol_fii:.2%}")
-
-        st.subheader("Carteira de Sharpe Máximo – AÇÕES E FIIs")
-        tickers_comb = acoes_validos + fii_validos
-        serie_comb = (
-            pd.Series(w_sharpe_comb, index=tickers_comb)
-            .loc[lambda s: s > 0.001]
-            .sort_values(ascending=False)
-            .rename(index=lambda x: x.replace(".SA", ""))
-            .rename_axis(index="Ticker")
-            .rename("Participação")
-        )
-        st.dataframe(serie_comb.apply(lambda x: f"{x:.2%}"))
-        st.write(f"**Sharpe:** {sharpe_comb:.4f} | **Retorno:** {ret_comb:.2%} | **Volatilidade:** {vol_comb:.2%}")
-
-        # Composição por classe
-        idx_acoes = [i for i, tk in enumerate(tickers_comb) if tk in acoes_validos]
-        idx_fii = [i for i, tk in enumerate(tickers_comb) if tk in fii_validos]
-        pct_acoes = w_sharpe_comb[idx_acoes].sum()
-        pct_fii = w_sharpe_comb[idx_fii].sum()
-        st.write(f"**Composição por classe:** Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
-
-        st.subheader("Carteira Manual")
-        serie_man = (
-            pd.Series(w_man, index=tickers_man)
-            .loc[lambda s: s > 0.001]
-            .sort_values(ascending=False)
-            .rename(index=lambda x: x.replace(".SA", ""))
-            .rename_axis(index="Ticker")
-            .rename("Participação")
-        )
-        st.dataframe(serie_man.apply(lambda x: f"{x:.2%}"))
-        st.write(f"**Sharpe:** {sharpe_man:.4f} | **Retorno:** {ret_man:.2%} | **Volatilidade:** {vol_man:.2%}")
-
-        st.subheader("Carteira Otimizada")
-        st.write("Carteira remanejando a participação das empresas que você escolheu")
-        serie_opt = (
-            pd.Series(w_opt_manual, index=tickers_man)
-            .loc[lambda s: s > 0.001]
-            .sort_values(ascending=False)
-            .rename(index=lambda x: x.replace(".SA", ""))
-            .rename_axis(index="Ticker")
-            .rename("Participação")
-        )
-        st.dataframe(serie_opt.apply(lambda x: f"{x:.2%}"))
-        st.write(f"**Sharpe:** {sharpe_opt_manual:.4f} | **Retorno:** {ret_opt_manual:.2%} | **Volatilidade:** {vol_opt_manual:.2%}")
-
-        # Se a otimização retornou algo válido, exiba a tabela
-        if w_hibrida.size:
-            st.subheader(f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)")
-            serie_hibrida = (
-                pd.Series(w_hibrida, index=tickers_hibrida)
-                    .sort_values(ascending=False)
-                    .rename(index=lambda x: x.replace(".SA", ""))
-                    .rename_axis(index="Ticker")
-                    .rename("Participação")
-                    )
-            adicionados = [tk for tk in tickers_hibrida if tk not in tickers_man]
-            adicionados = [t.replace(".SA", "") for t in adicionados]
-            if len(adicionados) == 1:
-                texto = adicionados[0]
-            else:
-                texto = ", ".join(adicionados[:-1]) + " e " + adicionados[-1]
-
-            st.markdown(
-                "Para melhorar a relação Risco x Retorno, você pode adicionar "
-                f"à sua carteira {texto}"
-            )
-            st.dataframe(serie_hibrida.apply(lambda x: f"{x:.2%}"))
-            st.write(
-                f"**Sharpe:** {sharpe_hibrida:.4f} | "
-                f"**Retorno:** {ret_hibrida:.2%} | "
-                f"**Volatilidade:** {vol_hibrida:.2%}"
-            )
-        else:
-            st.warning("Não foi possível otimizar a carteira híbrida sob essas restrições.")
-     
 if __name__ == "__main__":
     main()
