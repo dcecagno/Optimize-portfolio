@@ -545,6 +545,11 @@ def main():
         vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
 
         # Matriz de correlação
+
+        st.write("w_sharpe_aco:", w_sharpe_aco)
+        st.write("cov_aco index:", cov_aco.index.tolist())
+        st.write("cov_aco columns:", cov_aco.columns.tolist())
+
         # supondo que tickers_hibrida seja sua lista final
         cov_h_aco = cov_aco.loc[w_sharpe_aco, w_sharpe_aco]
 
