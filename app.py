@@ -343,8 +343,11 @@ def plot_correlation_heatmap(
     weights: np.ndarray,
     tickers: list[str],
     min_weight: float = 0.001,
-    title: str = "Matriz de Correlação",
-    clean_suffix: str = ".SA"
+    title: str = None,
+    clean_suffix: str = ".SA",
+    cbar: bool = False,         # <— mostrar colorbar?
+    show_title: bool = False    # <— desenhar title no ax?
+
 ):
     """
     1) Monta Series de pesos indexada pelos tickers
@@ -353,6 +356,8 @@ def plot_correlation_heatmap(
     4) Calcula correlação
     5) Ajusta figsize e fontsize dinamicamente e plota o heatmap
     """
+    title = title or "Matriz de Correlação"
+
     # 1) Series de pesos
     serie_w = pd.Series(weights, index=tickers)
 
@@ -397,7 +402,7 @@ def plot_correlation_heatmap(
         square=True,
         linewidths=0.5,
         annot_kws={"fontsize": font_size},
-        cbar_kws={"label": "Correlação"}
+        cbar=cbar             
     )
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
@@ -448,7 +453,9 @@ def render_portfolio_section(
         cov_df=cov_df,
         weights=weights,
         tickers=tickers,
-        min_weight=min_weight
+        min_weight=min_weight,
+        cbar        = False,
+        show_title  = False
     )
 
 # =======================
@@ -1538,7 +1545,7 @@ def main():
             ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_comb, ret_comb, vol_comb),
             ("Carteira Manual", w_man, tickers_man, cov_manual, sharpe_man, ret_man, vol_man),
             ("Carteira Manual Otimizada", w_opt_manual, tickers_man, cov_opt_manual, sharpe_opt_manual, ret_opt_manual, vol_opt_manual),
-            ("Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)", w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida),
+            (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)", w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida),
         ]
 
 
