@@ -453,7 +453,7 @@ def render_portfolio_section(
     )
 
     # 3) Heatmap
-    st.subheader(f"Matriz de Correlação — {name}")
+    #st.subheader(f"Matriz de Correlação — {name}")
     plot_correlation_heatmap(
         cov_df=cov_df,
         weights=weights,
@@ -468,7 +468,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v18")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v19")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
