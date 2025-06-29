@@ -448,7 +448,7 @@ def render_portfolio_section(
         cov_df=cov_df,
         weights=weights,
         tickers=tickers,
-        min_weight=min_weight"
+        min_weight=min_weight
     )
 
 # =======================
