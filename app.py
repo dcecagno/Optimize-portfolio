@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
+import seaborn as sns
 import streamlit as st
 
 # =======================
@@ -543,6 +544,24 @@ def main():
         ret_comb = np.exp(portfolio_return(w_sharpe_comb, mu_comb.values)) - 1
         vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
 
+        # Matriz de correlação
+        # supondo que tickers_hibrida seja sua lista final
+        cov_h_aco = cov_aco.loc[acoes_validos, acoes_validos]
+
+        # calcula o desvio padrão de cada ativo
+        std_aco = np.sqrt(np.diag(cov_h_aco))
+        # corr = cov_ij / (σ_i * σ_j)
+        corr_aco = cov_h_aco.values / np.outer(std_aco, std_aco)
+        corr_aco = pd.DataFrame(
+            corr_aco,
+            index=acoes_validos,
+            columns=acoes_validos
+        )
+
+        st.subheader("Matriz de Correlação (via covariância)")
+        st.dataframe(corr_aco.style.format("{:.2f}"))
+
+
         # Verifica se há tickers da carteira manual que não estão em prices_comb
         tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
 
@@ -665,6 +684,27 @@ def main():
         )
         st.dataframe(serie_aco.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_aco:.4f} | **Retorno:** {ret_aco:.2%} | **Volatilidade:** {vol_aco:.2%}")
+
+        # corr é sua DataFrame de correlação, index/columns já limpos (sem “.SA”):
+        # ex: corr = pd.DataFrame(...)
+
+        st.subheader("Matriz de Correlação — Heatmap")
+
+        fig_aco, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(
+            corr_aco,
+            annot=corr_aco.applymap(lambda x: f"{x:.1%}"),  # anota cada célula em porcentagem
+            fmt="",                                     # sem formatação numérica extra
+            cmap="RdBu",                                # vermelho → branco → azul
+            center=0,                                   # zero no meio da paleta
+            linewidths=0.5,
+            square=True,
+            cbar_kws={"label": "Correlação"}            # legenda da barra de cores
+        )
+        plt.xticks(rotation=45, ha="right")
+        plt.yticks(rotation=0)
+        st.pyplot(fig_aco)
+
 
         st.subheader("Carteira de Sharpe Máximo – FIIs")
         serie_fii = (
