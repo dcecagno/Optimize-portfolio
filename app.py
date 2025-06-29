@@ -463,7 +463,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v17")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v18")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
