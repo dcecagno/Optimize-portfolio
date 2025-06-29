@@ -301,7 +301,6 @@ def otimizar_carteira_hibrida(
 
     return list(tickers_hibrida), np.array(w_hibrida), ret_h, vol_h, sharpe_h
 
-
 # =======================
 # Funções de Plotagem
 # =======================
@@ -338,6 +337,64 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
     plt.gca().xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
     plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
     st.pyplot(plt)
+
+def plot_correlation_heatmap(
+    cov_df: pd.DataFrame,
+    weights: np.ndarray,
+    tickers: list[str],
+    min_weight: float = 0.001,
+    title: str = "Matriz de Correlação",
+    figsize: tuple[int, int] = (6, 6),
+    clean_suffix: str = ".SA"
+):
+    """
+    1) Monta Series de pesos indexada pelos tickers
+    2) Filtra só os ativos com peso > min_weight
+    3) Extrai sub-DataFrame de covariância
+    4) Calcula correlação e plota heatmap
+    """
+
+    # 1) Series de pesos
+    serie_w = pd.Series(weights, index=tickers)
+
+    # 2) Filtra ativos relevantes
+    serie_sel = serie_w[serie_w > min_weight]
+    tickers_sel = serie_sel.index.tolist()
+    if not tickers_sel:
+        st.warning(f"Nenhum ativo acima do limiar de {min_weight:.1%} em {title}.")
+        return
+
+    # 3) Sub-matriz de covariância
+    cov_sub = cov_df.loc[tickers_sel, tickers_sel]
+
+    # 4) Calcula a correlação
+    std = np.sqrt(np.diag(cov_sub))
+    corr_mat = cov_sub.values / np.outer(std, std)
+    corr_df = pd.DataFrame(corr_mat, index=tickers_sel, columns=tickers_sel)
+
+    # (Opcional) limpa sufixos nos rótulos
+    if clean_suffix:
+        labels = [t.replace(clean_suffix, "") for t in corr_df.columns]
+        corr_df.index = labels
+        corr_df.columns = labels
+
+    # 5) Plota com Seaborn
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.heatmap(
+        corr_df,
+        annot=corr_df.applymap(lambda x: f"{x:.1%}"),
+        fmt="",
+        cmap="RdBu_r",
+        center=0,
+        square=True,
+        linewidths=0.5,
+        cbar_kws={"label": "Correlação"}
+    )
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+    ax.set_title(title)
+
+    st.pyplot(fig)
 
 # =======================
 # Bloco Principal
@@ -544,29 +601,6 @@ def main():
         ret_comb = np.exp(portfolio_return(w_sharpe_comb, mu_comb.values)) - 1
         vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
 
-        # Matriz de correlação
-
-        st.write("w_sharpe_aco:", w_sharpe_aco)
-        st.write("cov_aco index:", cov_aco.index.tolist())
-        st.write("cov_aco columns:", cov_aco.columns.tolist())
-
-        # supondo que tickers_hibrida seja sua lista final
-        cov_h_aco = cov_aco.loc[w_sharpe_aco, w_sharpe_aco]
-
-        # calcula o desvio padrão de cada ativo
-        std_aco = np.sqrt(np.diag(cov_h_aco))
-        # corr = cov_ij / (σ_i * σ_j)
-        corr_aco = cov_h_aco.values / np.outer(std_aco, std_aco)
-        corr_aco = pd.DataFrame(
-            corr_aco,
-            index=w_sharpe_aco,
-            columns=w_sharpe_aco
-        )
-
-        st.subheader("Matriz de Correlação (via covariância)")
-        st.dataframe(corr_aco.style.format("{:.2f}"))
-
-
         # Verifica se há tickers da carteira manual que não estão em prices_comb
         tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
 
@@ -694,22 +728,13 @@ def main():
         # ex: corr = pd.DataFrame(...)
 
         st.subheader("Matriz de Correlação — Heatmap")
-
-        fig_aco, ax = plt.subplots(figsize=(8, 6))
-        sns.heatmap(
-            corr_aco,
-            annot=corr_aco.applymap(lambda x: f"{x:.1%}"),  # anota cada célula em porcentagem
-            fmt="",                                     # sem formatação numérica extra
-            cmap="RdBu",                                # vermelho → branco → azul
-            center=0,                                   # zero no meio da paleta
-            linewidths=0.5,
-            square=True,
-            cbar_kws={"label": "Correlação"}            # legenda da barra de cores
-        )
-        plt.xticks(rotation=45, ha="right")
-        plt.yticks(rotation=0)
-        st.pyplot(fig_aco)
-
+        plot_correlation_heatmap(
+                cov_df=cov_aco,
+                weights=w_sharpe_aco,
+                tickers=acoes_validos,
+                min_weight=0.001,
+                title="Correlação – Ações (Sharpe Máximo)"
+            )
 
         st.subheader("Carteira de Sharpe Máximo – FIIs")
         serie_fii = (
