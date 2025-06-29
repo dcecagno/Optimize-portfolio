@@ -457,7 +457,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v16")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v17")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1248,24 +1248,29 @@ def main():
         all_tickers = prices_read.columns.tolist()
 
         # 4) Filtra Ações, FIIs e “não localizados”
-        acoes_detectadas = [t.replace(".SA","") 
-                            for t in all_tickers 
-                            if t in SECTOR_MAP_ACOES]
-        fiis_detectados = [t.replace(".SA","") 
-                        for t in all_tickers 
-                        if t in SECTOR_MAP_FII]
-        nao_localizados = [t.replace(".SA","") 
-                        for t in all_tickers 
-                        if t not in SECTOR_MAP_ACOES 
-                        and t not in SECTOR_MAP_FII]
+        acoes_detectadas = [
+            t.replace(".SA","").strip().upper()
+            for t in all_tickers 
+            if t in SECTOR_MAP_ACOES]
+        acoes_detectadas = list(dict.fromkeys(acoes_detectadas))
+
+        fiis_detectados = [
+            t.replace(".SA","").strip().upper()
+            for t in all_tickers 
+            if t in SECTOR_MAP_FII]
+        nao_localizados = [
+            t.replace(".SA","").strip().upper()
+            for t in all_tickers 
+            if t not in SECTOR_MAP_ACOES 
+            and t not in SECTOR_MAP_FII]
 
         st.subheader("Ações reconhecidas")
         st.write(acoes_detectadas)
-        acoes = normalizar_tickers([x.strip() for x in acoes_detectadas.split(",")]) # acoes = [x.strip() for x in acoes.split(",")]
+        acoes = normalizar_tickers(acoes_detectadas)
 
         st.subheader("FIIs reconhecidos")
         st.write(fiis_detectados)
-        fii = normalizar_tickers([x.strip() for x in fiis_detectados.split(",")]) # fii = [x.strip() for x in fii.split(",")]
+        fii = normalizar_tickers(fiis_detectados)
 
         if nao_localizados:
             st.subheader("Tickers não localizados")
