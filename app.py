@@ -384,13 +384,13 @@ def plot_correlation_heatmap(
     fig, ax = plt.subplots(figsize=(fig_side, fig_side))
 
     # Fonte entre 6pt e 20pt; quanto mais ativos, menor a fonte
-    min_fs, max_fs = 6, 20
-    font_size = int(max(min_fs, min(max_fs, 300 / n)))
+    min_fs, max_fs = 6, 10
+    font_size = int(max(min_fs, min(max_fs, 150 / n)))
 
     # 6) Desenha o heatmap
     sns.heatmap(
         corr_df,
-        annot=corr_df.applymap(lambda x: f"{x:.1%}"),
+        annot=corr_df.applymap(lambda x: f"{x:.0%}"),
         fmt="", 
         cmap="RdBu_r",
         center=0,
@@ -497,6 +497,7 @@ def main():
         'ENJU3.SA': 'Bens industriais',
         'ESPA3.SA': 'Bens industriais',
         'FGAA11.SA': 'Bens industriais',
+        'FRAS3.SA': 'Bens industriais',
         'GCRA11.SA': 'Bens industriais',
         'GGPS3.SA': 'Bens industriais',
         'GMAT3.SA': 'Bens industriais',
@@ -509,6 +510,7 @@ def main():
         'ISAE4.SA': 'Bens industriais',
         'JALL3.SA': 'Bens industriais',
         'JSLG3.SA': 'Bens industriais',
+        'KELP3.SA': 'Bens industriais',
         'KNCA11.SA': 'Bens industriais',
         'KRSA3.SA': 'Bens industriais',
         'LAVV3.SA': 'Bens industriais',
@@ -526,6 +528,7 @@ def main():
         'PGMN3.SA': 'Bens industriais',
         'PLCA11.SA': 'Bens industriais',
         'PLPL3.SA': 'Bens industriais',
+        'POMO4.SA': 'Bens industriais',
         'RECR11.SA': 'Bens industriais',
         'RURA11.SA': 'Bens industriais',
         'RZAT11.SA': 'Bens industriais',
@@ -538,6 +541,7 @@ def main():
         'VCRA11.SA': 'Bens industriais',
         'VGIA11.SA': 'Bens industriais',
         'VITT3.SA': 'Bens industriais',
+        'WEGE3.SA': 'Bens industriais',
         'WEST3.SA': 'Bens industriais',
         'ZAMP3.SA': 'Bens industriais',
         'ALOS3.SA': 'Consumo cíclico',
@@ -577,6 +581,7 @@ def main():
         'SLED3.SA': 'Consumo cíclico',
         'SLED4.SA': 'Consumo cíclico',
         'TCSA3.SA': 'Consumo cíclico',
+        'VIVR3.SA': 'Consumo cíclico',
         'VSTE3.SA': 'Consumo cíclico',
         'WHRL4.SA': 'Consumo cíclico',
         'YDUQ3.SA': 'Consumo cíclico',
@@ -592,11 +597,14 @@ def main():
         'PCAR3.SA': 'Consumo não cíclico',
         'SMTO3.SA': 'Consumo não cíclico',
         'VIVA3.SA': 'Consumo não cíclico',
+        'B3SA3.SA': 'Financeiro',
         'BBAS3.SA': 'Financeiro',
+        'BBDC3.SA': 'Financeiro',
         'BBDC4.SA': 'Financeiro',
         'BBSE3.SA': 'Financeiro',
         'BMGB4.SA': 'Financeiro',
         'BMIN3.SA': 'Financeiro',
+        'BPAC11.SA': 'Financeiro',
         'BPAN4.SA': 'Financeiro',
         'BPAR3.SA': 'Financeiro',
         'BRPR3.SA': 'Financeiro',
@@ -619,6 +627,7 @@ def main():
         'SCAR3.SA': 'Financeiro',
         'SYNE3.SA': 'Financeiro',
         'TRAD3.SA': 'Financeiro',
+        'WIZC3.SA': 'Financeiro',
         'BRAP4.SA': 'Materiais básicos',
         'BRKM5.SA': 'Materiais básicos',
         'CSNA3.SA': 'Materiais básicos',
@@ -632,6 +641,7 @@ def main():
         'MMXM11.SA': 'Materiais básicos',
         'NEMO3.SA': 'Materiais básicos',
         'PMAM3.SA': 'Materiais básicos',
+        'RANI3.SA': 'Materiais básicos',
         'SUZB3.SA': 'Materiais básicos',
         'UNIP6.SA': 'Materiais básicos',
         'VALE3.SA': 'Materiais básicos',
@@ -711,10 +721,15 @@ def main():
         'COCE5.SA':  'Utilidade pública',
         'CPFE3.SA':  'Utilidade pública',
         'CPLE6.SA':  'Utilidade pública',
+        'CSMG3.SA':  'Utilidade pública',
         'EGIE3.SA':  'Utilidade pública',
+        'ELET3.SA':  'Utilidade pública',
+        'ENEV3.SA':  'Utilidade pública',
+        'EQTL3.SA':  'Utilidade pública',
         'GEPA4.SA':  'Utilidade pública',
         'NEOE3.SA':  'Utilidade pública',
         'RNEW4.SA':  'Utilidade pública',
+        'SAPR4.SA': 'Utilidade pública',
         'SAPR11.SA': 'Utilidade pública',
         'SBSP3.SA':  'Utilidade pública',
         'TAEE11.SA': 'Utilidade pública' 
@@ -1253,24 +1268,20 @@ def main():
             for t in all_tickers 
             if t in SECTOR_MAP_ACOES]
         acoes_detectadas = list(dict.fromkeys(acoes_detectadas))
+        acoes = normalizar_tickers(acoes_detectadas)
 
         fiis_detectados = [
             t.replace(".SA","").strip().upper()
             for t in all_tickers 
             if t in SECTOR_MAP_FII]
+        fiis_detectados = list(dict.fromkeys(fiis_detectados))
+        fii = normalizar_tickers(fiis_detectados)
+
         nao_localizados = [
             t.replace(".SA","").strip().upper()
             for t in all_tickers 
             if t not in SECTOR_MAP_ACOES 
             and t not in SECTOR_MAP_FII]
-
-        st.subheader("Ações reconhecidas")
-        st.write(acoes_detectadas)
-        acoes = normalizar_tickers(acoes_detectadas)
-
-        st.subheader("FIIs reconhecidos")
-        st.write(fiis_detectados)
-        fii = normalizar_tickers(fiis_detectados)
 
         if nao_localizados:
             st.subheader("Tickers não localizados")
@@ -1285,9 +1296,11 @@ def main():
         st.write("[LOG] Ações carregadas:", acoes_validos)
         if acoes_problema:
             st.warning(f"[LOG] Ações indisponíveis ou com poucos dados: {acoes_problema}")
+
         st.write("[LOG] FIIs carregados:", fii_validos)
         if fii_problema:
             st.warning(f"[LOG] FIIs indisponíveis ou com poucos dados: {fii_problema}")
+
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
 
         # Cria os DataFrames filtrados para as simulações
