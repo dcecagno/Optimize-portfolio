@@ -396,6 +396,53 @@ def plot_correlation_heatmap(
 
     st.pyplot(fig)
 
+def render_portfolio_section(
+    name: str,
+    weights: np.ndarray,
+    tickers: list[str],
+    cov_df: pd.DataFrame,
+    sharpe: float,
+    ret: float,
+    vol: float,
+    min_weight: float = 0.001
+):
+    """
+    1) Cria a Series de participação
+    2) Exibe subheader, dataframe e métricas
+    3) Plota heatmap de correlação só para ativos com peso > min_weight
+    """
+    # 1) Série de participação
+    serie = (
+        pd.Series(weights, index=tickers)
+          .loc[lambda s: s > min_weight]
+          .sort_values(ascending=False)
+          .rename(index=lambda x: x.replace(".SA", ""))
+          .rename_axis(index="Ticker")
+          .rename("Participação")
+    )
+    if serie.empty:
+        st.warning(f"Nenhum ativo acima de {min_weight:.1%} em {name}.")
+        return
+
+    # 2) Tabela + métricas
+    st.subheader(f"Carteira – {name}")
+    st.dataframe(serie.apply(lambda x: f"{x:.2%}"), use_container_width=True)
+    st.write(
+        f"**Sharpe:** {sharpe:.4f} | "
+        f"**Retorno:** {ret:.2%} | "
+        f"**Volatilidade:** {vol:.2%}"
+    )
+
+    # 3) Heatmap
+    st.subheader(f"Matriz de Correlação — {name}")
+    plot_correlation_heatmap(
+        cov_df=cov_df,
+        weights=weights,
+        tickers=tickers,
+        min_weight=min_weight,
+        title=f"Correlação – {name}"
+    )
+
 # =======================
 # Bloco Principal
 # =======================
@@ -600,6 +647,7 @@ def main():
 
         ret_comb = np.exp(portfolio_return(w_sharpe_comb, mu_comb.values)) - 1
         vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
+        tickers_comb = acoes_validos + fii_validos
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
         tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
@@ -685,6 +733,7 @@ def main():
                 w_opt_manual = rebalance_weights(w_opt_manual, min_w)
                 ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
                 vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
+                cov_opt_manual = cov_manual
 
                 # Carteira Híbrida – via SLSQP, mantendo pesos mínimos manuais e teto extra  
                 tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = \
@@ -696,7 +745,9 @@ def main():
                         cov_comb,             # 5) pd.DataFrame de covariâncias combinadas
                         percentual_adicional  # 6) float em [0,1]
                     )
-                
+                cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
+
+
             except Exception as e:
                 st.error(f"Erro ao processar carteira manual: {e}")
                 ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
@@ -712,6 +763,30 @@ def main():
             vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida
         )
 
+        cenarios = [
+            ("Ações (Sharpe Máximo)",        w_sharpe_aco,    acoes_validos,    cov_aco,      sharpe_aco,       ret_aco,       vol_aco),
+            ("FIIs (Sharpe Máximo)",         w_sharpe_fii,    fii_validos,      cov_fii,      sharpe_fii,       ret_fii,       vol_fii),
+            ("Ações + FIIs (Sharpe Máximo)", w_sharpe_comb,   tickers_comb,     cov_comb,     sharpe_comb,      ret_comb,      vol_comb),
+            ("Manual",                       w_man,           tickers_man,      cov_manual,   sharpe_man,       ret_man,       vol_man),
+            ("Manual Otimizada",             w_opt_manual,    tickers_man,      cov_opt_manual, sharpe_opt_manual, ret_opt_manual, vol_opt_manual),
+            ("Híbrida",                      w_hibrida,       tickers_hibrida,  cov_hibrida,  sharpe_hibrida,   ret_hibrida,   vol_hibrida),
+        ]
+
+
+        for (nome, w, ticks, cov, s, r, v) in cenarios:
+            render_portfolio_section(
+                name=nome,
+                weights=w,
+                tickers=ticks,
+                cov_df=cov,
+                sharpe=s,
+                ret=r,
+                vol=v,
+                min_weight=0.001
+            )
+
+
+
         st.subheader("Carteira de Sharpe Máximo – AÇÕES")
         serie_aco = (
             pd.Series(w_sharpe_aco, index=acoes_validos)
@@ -723,9 +798,6 @@ def main():
         )
         st.dataframe(serie_aco.apply(lambda x: f"{x:.2%}"))
         st.write(f"**Sharpe:** {sharpe_aco:.4f} | **Retorno:** {ret_aco:.2%} | **Volatilidade:** {vol_aco:.2%}")
-
-        # corr é sua DataFrame de correlação, index/columns já limpos (sem “.SA”):
-        # ex: corr = pd.DataFrame(...)
 
         st.subheader("Matriz de Correlação — Heatmap")
         plot_correlation_heatmap(
