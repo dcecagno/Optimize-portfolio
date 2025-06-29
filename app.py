@@ -334,8 +334,16 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
     plt.title("Fronteira Eficiente – Ações x FIIs x (Ações + FII)")
     plt.legend()
     plt.grid(True)
-    plt.gca().xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
-    plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
+    ax = plt.gca()
+    ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
+    
+    max_vol = max(sim_vol_aco.max(), sim_vol_fii.max(), sim_vol_comb.max())
+    max_ret = max(sim_ret_aco.max(), sim_ret_fii.max(), sim_ret_comb.max())
+
+    ax.set_xlim(0, max_vol * 1.05)
+    ax.set_ylim(0, max_ret * 1.05)
+
     st.pyplot(plt)
 
 def plot_correlation_heatmap(
@@ -444,7 +452,6 @@ def render_portfolio_section(
         unsafe_allow_html=True
     )
 
-    st.subheader({name})
     st.dataframe(serie.apply(lambda x: f"{x:.2%}"), use_container_width=True)
     st.write(
         f"**Sharpe:** {sharpe:.2f} | "
@@ -1304,20 +1311,14 @@ def main():
         if nao_localizados:
             st.subheader("Tickers não localizados")
             st.write(nao_localizados)
-        else:
-            st.success("Todos os tickers foram classificados como Ações ou FIIs.")
 
         # Filtra os tickers com base em um mínimo desejado de observações (por exemplo, 200)
         acoes_validos, acoes_problema = filtrar_tickers(prices_read, acoes, min_obs=200)
         fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
 
         st.write("[LOG] Ações carregadas:", acoes_validos)
-        if acoes_problema:
-            st.warning(f"[LOG] Ações indisponíveis ou com poucos dados: {acoes_problema}")
 
         st.write("[LOG] FIIs carregados:", fii_validos)
-        if fii_problema:
-            st.warning(f"[LOG] FIIs indisponíveis ou com poucos dados: {fii_problema}")
 
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
 
