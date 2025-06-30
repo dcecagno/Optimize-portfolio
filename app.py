@@ -191,8 +191,14 @@ def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0): #rf=0.0,
         args=(mu, cov), #, rf
         method='SLSQP', 
         bounds=bounds, 
-        constraints=cons)
-    return res.x, -res.fun
+        constraints=cons
+    )
+    w_opt   = res.x
+    sharpe  = -res.fun
+    success = res.success
+    msg     = res.message
+
+    return w_opt, sharpe, success, msg
 
 def portfolio_return(w, mu):
     return np.dot(mu, w)
@@ -257,10 +263,8 @@ def otimizar_carteira_hibrida(
         # monta a lista de candidatos: tudo em mu_comb, menos os manuais
         ativos_sugeridos = [t for t in mu_comb.index if t not in tickers_man]
 
-    # 3) Combinar tickers
+    # 3) Combinar tickers e extrai mu/cov
     tickers_hibrida = tickers_man + ativos_sugeridos
-
-    # 4) Extrair mu e cov para todos
     mu_h    = mu_comb.loc[tickers_hibrida].values
     cov_h   = cov_comb.loc[tickers_hibrida, tickers_hibrida].values
 
@@ -289,11 +293,10 @@ def otimizar_carteira_hibrida(
         'fun': lambda w: max_extra - w[idx_sugeridos].sum()
     })
 
-    # 7) Bounds [0,1] para cada w
-    bounds = [(0.0, 1.0)] * len(tickers_hibrida)
-
-    # 8) Chute inicial (distribuição uniforme)
-    init = np.repeat(1 / len(tickers_hibrida), len(tickers_hibrida))
+    # 7) Bounds e chute
+    n = len(tickers_hibrida)
+    bounds = [(0.0, 1.0)] * n
+    init = np.repeat(1 / n, n)
 
     # 9) Executar otimização de Sharpe (negativo)
     res = minimize(
@@ -304,6 +307,22 @@ def otimizar_carteira_hibrida(
         bounds=bounds,
         constraints=cons
     )
+
+    # 8) Trata falha de otimização
+    if not res.success:
+        st.warning(
+            "Falha na otimização híbrida: "
+            f"{res.message}. "
+            "Será retornada a carteira manual original."
+        )
+        # fallback para carteira manual
+        w_man = np.array([v/sum(valores_man) for v in valores_man])
+        ret_man = np.dot(w_man, mu_h[:len(w_man)])
+        vol_man = np.sqrt(w_man.T @ cov_h[:len(w_man),:len(w_man)] @ w_man)
+        sharpe_man = ret_man / vol_man
+        return tickers_man, w_man, ret_man, vol_man, sharpe_man
+
+    # 9) Se deu certo, monta resultados
 
     w_hibrida = res.x
     ret_h = w_hibrida.dot(mu_h)
@@ -548,7 +567,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v30")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v31")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1587,8 +1606,17 @@ def main():
                 sharpe_man = ret_man / vol_man #(ret_man - rf) / vol_man
 
                 # Carteira manual otimizada
-                w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w)#, rf
-                #w_opt_manual = rebalance_weights(w_opt_manual, min_w)
+                w_opt_manual, sharpe_opt_manual, ok_opt, msg_opt = optimize_max_sharpe(
+                    mu_vec, cov_mat, min_w, max_w)#, rf
+                if not ok_opt:
+                    st.warning(
+                        "Não foi possível otimizar a carteira manual dentro dos limites definidos. "
+                        f"Motivo: {msg_opt}"
+                    )
+                    # Você pode optar por manter w_opt_manual = w_man (igual a manual crua)
+                    w_opt_manual = w_man
+                    sharpe_opt_manual = sharpe_man
+
                 ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
                 vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
                 cov_opt_manual = cov_manual
