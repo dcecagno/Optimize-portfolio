@@ -144,8 +144,17 @@ def simulate_portfolios_cardinalidade_controlada(
         pesos_ativos = rng.dirichlet(alpha_dirichlet * np.ones(k))
         pesos[ativos_escolhidos] = pesos_ativos
 
-        if pesos.max() > max_w or (pesos >= min_w).sum() < min_assets:
+        nz = pesos > 0
+        n_nz = nz.sum()
+        # verifica cardinalidade
+        if n_nz < min_assets or n_nz > max_assets:
             continue
+        # pega só os pesos não-zero
+        w_nz = pesos[nz]
+        # exige piso e teto
+        if w_nz.min() < min_w or w_nz.max() > max_w:
+            continue
+
 
         ret = np.dot(mu.values, pesos)
         vol = np.sqrt(np.dot(pesos.T, np.dot(cov.values, pesos)))
@@ -539,7 +548,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v29")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v30")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
