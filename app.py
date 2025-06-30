@@ -3,6 +3,7 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+from scipy.interpolate import PchipInterpolator
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import seaborn as sns
@@ -307,28 +308,60 @@ def otimizar_carteira_hibrida(
 
     return list(tickers_hibrida), np.array(w_hibrida), ret_h, vol_h, sharpe_h
 
+# 1) Extrai fronteira Pareto dos pontos simulados
+def pareto_front(vols: np.ndarray, rets: np.ndarray):
+    idx = np.argsort(vols)
+    vols, rets = vols[idx], rets[idx]
+    mask = np.zeros_like(vols, dtype=bool)
+    current_max = -np.inf
+    for i, (v, r) in enumerate(zip(vols, rets)):
+        if r > current_max:
+            mask[i] = True
+            current_max = r
+    return vols[mask], rets[mask]
+
+# 2) Encontra a simulação de máximo Sharpe entre as válidas
+def pick_best_sim(sim_ret: np.ndarray, sim_vol: np.ndarray, sim_w: np.ndarray):
+    sharpe = sim_ret / sim_vol
+    idx   = np.nanargmax(sharpe)
+    return sim_w[idx], sim_ret[idx], sim_vol[idx], sharpe[idx]
+
 # =======================
 # Funções de Plotagem
 # =======================
 
-def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_aco, ret_aco,
-                 sim_vol_fii, sim_ret_fii, ef_vol_fii_opt, ef_ret_fii_opt, vol_fii, ret_fii,
-                 sim_vol_comb, sim_ret_comb, ef_vol_comb_opt, ef_ret_comb_opt, vol_comb, ret_comb,
-                 vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida):
+def plot_results(
+    sim_vol_aco, sim_ret_aco,
+    vol_lin_aco, ret_lin_aco,
+    vol_sh_aco, ret_sh_aco,
+    sim_vol_fii, sim_ret_fii,
+    vol_lin_fii, ret_lin_fii,
+    vol_sh_fii, ret_sh_fii,
+    sim_vol_comb, sim_ret_comb,
+    vol_lin_comb, ret_lin_comb,
+    vol_sh_comb, ret_sh_comb,
+    vol_man,     ret_man,
+    vol_opt_manual, ret_opt_manual,
+    vol_hibrida, ret_hibrida
+):
+    
     plt.figure(figsize=(12,8))
 
     # Monte Carlo e Fronteiras
-    plt.scatter(sim_vol_fii, sim_ret_fii, s=8, alpha=0.12, color='green', label='Simulações - FII')
-    plt.plot(ef_vol_fii_opt, ef_ret_fii_opt, 'g-', lw=2, label='Fronteira Eficiente - FIIs')
-    plt.scatter(vol_fii, ret_fii, color='green', marker='*', s=180, label='Sharpe Máx - FII')
+    plt.scatter(sim_vol_aco, sim_ret_aco, s=8, alpha=0.12, c='blue', label='MC – Ações')
+    plt.plot(vol_lin_aco, ret_lin_aco, '--', c='blue', lw=2, label='FE (MC) – Ações')
+    plt.scatter(vol_sh_aco, ret_sh_aco, marker='*', c='blue', s=180, label='Sharpe Max – Ações')
 
-    plt.scatter(sim_vol_aco, sim_ret_aco, s=8, alpha=0.12, color='blue', label='Simulações - Ações')
-    plt.plot(ef_vol_aco_opt, ef_ret_aco_opt, 'b-', lw=2, label='Fronteira Eficiente - Ações')
-    plt.scatter(vol_aco, ret_aco, color='blue', marker='*', s=180, label='Sharpe Máx - Ações')
 
-    plt.scatter(sim_vol_comb, sim_ret_comb, s=8, alpha=0.12, color='red', label='Simulações - Ações + FII')
-    plt.plot(ef_vol_comb_opt, ef_ret_comb_opt, 'r-', lw=2, label='Fronteira Eficiente - Ações + FII')
-    plt.scatter(vol_comb, ret_comb, color='red', marker='*', s=180, label='Sharpe Máx - Ações + FII')
+    plt.scatter(sim_vol_fii, sim_ret_fii, s=8, alpha=0.12, c='green', label='MC – FIIs')
+    plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2, label='FE (MC) – FIIs')
+    plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, label='Sharpe Max – FIIs')
+
+
+    plt.scatter(sim_vol_comb, sim_ret_comb, s=8, alpha=0.12, c='red', label='MC – Combinado')
+    plt.plot(vol_lin_comb, ret_lin_comb, '--', c='red', lw=2, label='FE (MC) – Combinado')
+    plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, label='Sharpe Max – Combinado')
+
 
     # Carteiras manuais
     plt.scatter(vol_man, ret_man, c="black", s=80, marker="X", label="Carteira Manual")
@@ -482,7 +515,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v26")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v27")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1414,34 +1447,40 @@ def main():
         sim_pesos_comb = st.session_state.sim_pesos_comb
         ativos_comb = st.session_state.ativos_comb
 
-        # Fronteiras eficientes via SLSQP
-        ef_vol_aco_opt, ef_ret_aco_opt = compute_efficient_frontier(mu_aco.values, cov_aco.values)
-        ef_vol_aco_opt, ef_ret_aco_opt = filtrar_fronteira_eficiente(ef_vol_aco_opt, ef_ret_aco_opt)
+        # 4) Fronteira e melhor sim – AÇÕES
+        pf_vol_aco, pf_ret_aco = pareto_front(sim_vol_aco, sim_ret_aco)
+        w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
+            sim_ret_aco, sim_vol_aco, sim_pesos_aco
+        )
 
-        ef_vol_fii_opt, ef_ret_fii_opt = compute_efficient_frontier(mu_fii.values, cov_fii.values)
-        ef_vol_fii_opt, ef_ret_fii_opt = filtrar_fronteira_eficiente(ef_vol_fii_opt, ef_ret_fii_opt)
 
-        ef_vol_comb_opt, ef_ret_comb_opt = compute_efficient_frontier(mu_comb.values, cov_comb.values)
-        ef_vol_comb_opt, ef_ret_comb_opt = filtrar_fronteira_eficiente(ef_vol_comb_opt, ef_ret_comb_opt)
+        # 5) Fronteira e melhor sim – FIIs
+        pf_vol_fii, pf_ret_fii = pareto_front(sim_vol_fii, sim_ret_fii)
+        w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
+            sim_ret_fii, sim_vol_fii, sim_pesos_fii
+        )
 
-        # Carteiras de Sharpe máximo
-        w_sharpe_aco, sharpe_aco = optimize_max_sharpe(mu_aco.values, cov_aco.values, 0.0, max_w) #, rf
-        w_sharpe_aco = rebalance_weights(w_sharpe_aco, min_w)
 
-        w_sharpe_fii, sharpe_fii = optimize_max_sharpe(mu_fii.values, cov_fii.values, 0.0, max_w)#, rf
-        w_sharpe_fii = rebalance_weights(w_sharpe_fii, min_w)
+        # 6) Fronteira e melhor sim – COMBINADO
+        pf_vol_comb, pf_ret_comb = pareto_front(sim_vol_comb, sim_ret_comb)
+        w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
+            sim_ret_comb, sim_vol_comb, sim_pesos_comb
+        )
 
-        w_sharpe_comb, sharpe_comb = optimize_max_sharpe(mu_comb.values, cov_comb.values, 0.0, max_w)#, rf
-        w_sharpe_comb = rebalance_weights(w_sharpe_comb, min_w)
+        # 2) Smooth grids
+        n_pts = 200
 
-        ret_aco = np.exp(portfolio_return(w_sharpe_aco, mu_aco.values)) - 1
-        vol_aco = portfolio_volatility(w_sharpe_aco, cov_aco.values)
+        vol_lin_aco  = np.linspace(pf_vol_aco.min(),   pf_vol_aco.max(),   n_pts)
+        ret_lin_aco  = PchipInterpolator(pf_vol_aco,   pf_ret_aco)(vol_lin_aco)
 
-        ret_fii = np.exp(portfolio_return(w_sharpe_fii, mu_fii.values)) - 1
-        vol_fii = portfolio_volatility(w_sharpe_fii, cov_fii.values)
+        vol_lin_fii  = np.linspace(pf_vol_fii.min(),   pf_vol_fii.max(),   n_pts)
+        ret_lin_fii  = PchipInterpolator(pf_vol_fii,   pf_ret_fii)(vol_lin_fii)
 
-        ret_comb = np.exp(portfolio_return(w_sharpe_comb, mu_comb.values)) - 1
-        vol_comb = portfolio_volatility(w_sharpe_comb, cov_comb.values)
+        vol_lin_comb = np.linspace(pf_vol_comb.min(),  pf_vol_comb.max(),  n_pts)
+        ret_lin_comb = PchipInterpolator(pf_vol_comb,  pf_ret_comb)(vol_lin_comb)
+
+
+
         tickers_comb = acoes_validos + fii_validos
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
@@ -1551,16 +1590,16 @@ def main():
 
         # Plotagem
         plot_results(
-            sim_vol_aco, np.exp(sim_ret_aco) - 1, ef_vol_aco_opt, np.exp(ef_ret_aco_opt) - 1, vol_aco, ret_aco,
-            sim_vol_fii, np.exp(sim_ret_fii) - 1, ef_vol_fii_opt, np.exp(ef_ret_fii_opt) - 1, vol_fii, ret_fii,
-            sim_vol_comb, np.exp(sim_ret_comb) - 1, ef_vol_comb_opt, np.exp(ef_ret_comb_opt) - 1, vol_comb, ret_comb,
+            sim_vol_aco, np.exp(sim_ret_aco)-1, vol_lin_aco, ret_lin_aco, vol_sh_aco, ret_sh_aco,
+            sim_vol_fii, np.exp(sim_ret_fii)-1, vol_lin_fii, ret_lin_fii, vol_sh_fii, ret_sh_fii,
+            sim_vol_comb, np.exp(sim_ret_comb)-1, vol_lin_comb, ret_lin_comb, vol_sh_comb, ret_sh_comb,
             vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida
         )
 
         cenarios = [
-            ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_aco, ret_aco, vol_aco),
-            ("Carteira de Sharpe Máximo – FIIs", w_sharpe_fii, fii_validos, cov_fii, sharpe_fii, ret_fii, vol_fii),
-            ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_comb, ret_comb, vol_comb),
+            ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_aco, ret_sh_aco, vol_sh_aco),
+            ("Carteira de Sharpe Máximo – FIIs", w_sharpe_fii, fii_validos,  cov_fii, sharpe_fii, ret_sh_fii, vol_sh_fii),
+            ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_comb, ret_sh_comb, vol_sh_comb),
             ("Carteira Manual", w_man, tickers_man, cov_manual, sharpe_man, ret_man, vol_man),
             ("Carteira Manual Otimizada", w_opt_manual, tickers_man, cov_opt_manual, sharpe_opt_manual, ret_opt_manual, vol_opt_manual),
             (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)", w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida),
