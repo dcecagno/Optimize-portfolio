@@ -349,7 +349,7 @@ def plot_results(sim_vol_aco, sim_ret_aco, ef_vol_aco_opt, ef_ret_aco_opt, vol_a
 
     max_ret = max(sim_ret_aco.max(), sim_ret_fii.max(), sim_ret_comb.max())
     min_ret = min(sim_ret_aco.min(), sim_ret_fii.min(), sim_ret_comb.min())
-    ax.set_ylim(min_ret * 1.15, max_ret * 1.15)
+    ax.set_ylim(min_ret * 1.15, max_ret * 1.3)
 
     st.pyplot(plt)
 
@@ -482,7 +482,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v20")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v21")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1518,7 +1518,7 @@ def main():
                 # Carteira manual original
                 ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
                 vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
-                sharpe_man = ret_man / vol_man
+                sharpe_man = (ret_man - rf) / vol_man
 
                 # Carteira manual otimizada
                 w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, rf, min_w, max_w)
