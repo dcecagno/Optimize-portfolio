@@ -163,17 +163,23 @@ def simulate_portfolios_cardinalidade_controlada(
 # Funções de Otimização
 # =======================
 
-def negative_sharpe(w, mu, cov):
+def negative_sharpe(w, mu, cov, rf=0.0):
     ret = np.dot(mu, w)
     vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
-    return -ret / vol
+    return -(ret - rf) / vol
     
-def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0):
+def optimize_max_sharpe(mu, cov, rf=0.0, min_w=0.0, max_w=1.0):
     n = len(mu)
     init = np.repeat(1/n, n)
     bounds = [(min_w, max_w)] * n
     cons = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
-    res = minimize(negative_sharpe, init, args=(mu, cov), method='SLSQP', bounds=bounds, constraints=cons)
+    res = minimize(
+        negative_sharpe, 
+        init, 
+        args=(mu, cov, rf), 
+        method='SLSQP', 
+        bounds=bounds, 
+        constraints=cons)
     return res.x, -res.fun
 
 def portfolio_return(w, mu):
@@ -1232,10 +1238,12 @@ def main():
     max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
     min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
     max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
+    rf_percent = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=10)
 
     # Converte para proporção (0 a 1)
     min_w = min_w_percent / 100
     max_w = max_w_percent / 100
+    rf = rf_percent / 100
 
     # Carteira manual
     st.subheader("Carteira Manual")
@@ -1413,13 +1421,13 @@ def main():
         ef_vol_comb_opt, ef_ret_comb_opt = filtrar_fronteira_eficiente(ef_vol_comb_opt, ef_ret_comb_opt)
 
         # Carteiras de Sharpe máximo
-        w_sharpe_aco, sharpe_aco = optimize_max_sharpe(mu_aco.values, cov_aco.values, 0.0, max_w)
+        w_sharpe_aco, sharpe_aco = optimize_max_sharpe(mu_aco.values, cov_aco.values, rf, 0.0, max_w)
         w_sharpe_aco = rebalance_weights(w_sharpe_aco, min_w)
 
-        w_sharpe_fii, sharpe_fii = optimize_max_sharpe(mu_fii.values, cov_fii.values, 0.0, max_w)
+        w_sharpe_fii, sharpe_fii = optimize_max_sharpe(mu_fii.values, cov_fii.values, rf, 0.0, max_w)
         w_sharpe_fii = rebalance_weights(w_sharpe_fii, min_w)
 
-        w_sharpe_comb, sharpe_comb = optimize_max_sharpe(mu_comb.values, cov_comb.values, 0.0, max_w)
+        w_sharpe_comb, sharpe_comb = optimize_max_sharpe(mu_comb.values, cov_comb.values, rf, 0.0, max_w)
         w_sharpe_comb = rebalance_weights(w_sharpe_comb, min_w)
 
         ret_aco = np.exp(portfolio_return(w_sharpe_aco, mu_aco.values)) - 1
@@ -1512,7 +1520,7 @@ def main():
                 sharpe_man = ret_man / vol_man
 
                 # Carteira manual otimizada
-                w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w)
+                w_opt_manual, sharpe_opt_manual = optimize_max_sharpe(mu_vec, cov_mat, rf, min_w, max_w)
                 w_opt_manual = rebalance_weights(w_opt_manual, min_w)
                 ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
                 vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
