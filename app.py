@@ -482,7 +482,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v19")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v20")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1238,12 +1238,13 @@ def main():
     max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
     min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
     max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
-    rf_percent = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=10)
+    rf_raw = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=10)
 
     # Converte para proporção (0 a 1)
     min_w = min_w_percent / 100
     max_w = max_w_percent / 100
-    rf = rf_percent / 100
+    rf_percent = rf_raw / 100
+    rf = (1 + rf_percent) ** anos - 1
 
     # Carteira manual
     st.subheader("Carteira Manual")
