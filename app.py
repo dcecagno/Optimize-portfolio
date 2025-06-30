@@ -168,7 +168,7 @@ def negative_sharpe(w, mu, cov): #, rf=0.0
     vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
     return -ret / vol #-(ret - rf) / vol
     
-def optimize_max_sharpe(mu, cov, rf=0.0, min_w=0.0, max_w=1.0):
+def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0): #rf=0.0, 
     n = len(mu)
     init = np.repeat(1/n, n)
     bounds = [(min_w, max_w)] * n
