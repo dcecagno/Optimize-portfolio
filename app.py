@@ -579,7 +579,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v32")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v33")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1543,58 +1543,48 @@ def main():
 
         if tickers_faltando:
             st.warning(f"Buscando dados no Yahoo Finance para: {', '.join(tickers_faltando)}")
-            try:
-                novos_dados = yf.download(
-                    tickers_faltando,
-                    start=prices_comb.index.min(),
-                    end=prices_comb.index.max()
-                )['Close']
+            
+            novos_list = []
+            baixados   = []
 
-                if isinstance(novos_dados, pd.Series):
-                    novos_dados = novos_dados.to_frame()
-                    novos_dados.columns = tickers_faltando
-                else:
-                    novos_dados = novos_dados[tickers_faltando]
+            for ticker in tickers_faltando:
+                try:
+                    df = yf.download(
+                        ticker,
+                        start=prices_comb.index.min(),
+                        end=prices_comb.index.max(),
+                        progress=False
+                    )[['Close']]
 
+                    if df.empty or df['Close'].dropna().empty:
+                        st.error(f"Sem dados históricos suficientes para {ticker}. Removido")
+                        continue
+
+                    df = df.rename(columns={'Close': ticker})
+                    novos_list.append(df)
+                    baixados.append(ticker)
+
+                except Exception as e:
+                    st.error(f"Erro ao buscar {ticker}: {e}")
+
+            if novos_list:
+                novos_dados = pd.concat(novos_list, axis=1)
                 prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
-                prices_comb = prices_comb.sort_index()
-            except Exception as e:
-                st.error(f"Erro ao buscar dados no Yahoo Finance: {e}")
+                prices_comb.sort_index(inplace=True)
 
-                # Alinha datas e concatena com prices_comb
-                prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
-                prices_comb = prices_comb.sort_index()
-            except Exception as e:
-                st.error(f"Erro ao buscar dados no Yahoo Finance: {e}")
+            pares_filtrados = [
+                (t, v) for t, v in zip(tickers_man, valores_man)
+                if (t not in tickers_faltando) or (t in baixados)
+            ]
 
+            # descompacta de volta (ou vazio, se não sobrou ninguém)
+            if pares_filtrados:
+                tickers_man, valores_man = zip(*pares_filtrados)
+                tickers_man, valores_man = list(tickers_man), list(valores_man)
+            else:
+                tickers_man, valores_man = [], []
+                
         if tickers_man:
-            pares = list(dict.fromkeys(
-                zip(normalizar_tickers(tickers_man), valores_man)
-            ))
-            tickers_man, valores_man = zip(*pares)
-            tickers_man, valores_man = list(tickers_man), list(valores_man)
-
-
-            # 2) Filtra SÓ os tickers que realmente estão em prices_comb.columns
-            disponiveis = set(prices_comb.columns)
-            filt_tickers = []
-            filt_valores = []
-            for t, v in zip(tickers_man, valores_man):
-                if t in disponiveis:
-                    filt_tickers.append(t)
-                    filt_valores.append(v)
-                else:
-                    st.warning(f"Sem dados para {t}, removido da carteira manual.")
-
-            if not filt_tickers:
-                st.error("Após o filtro, não sobrou nenhum ticker válido.")
-                st.stop()
-
-            tickers_man, valores_man = filt_tickers, filt_valores
-
-            # Agora **tickers_man** e **valores_man** têm o mesmo comprimento e só contêm ativos válidos!
-            # 4) Vai para os cálculos sem risco de index error
-
             total_man     = sum(valores_man)
             w_man         = np.array([v/total_man for v in valores_man])
             tickers_hibrida = []
