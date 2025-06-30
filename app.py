@@ -16,14 +16,26 @@ import streamlit as st
 # =======================
 
 def _read_close_prices(path_csv: str) -> pd.DataFrame:
-    """Lê CSV de preços. Tenta MultiIndex, se não, usa header simples."""
+    """
+    Lê CSV com cabeçalho em duas linhas (ticker / Price,Open,…)
+    e pula a terceira linha que só traz 'Date' e vírgulas.
+    Retorna só o Close.
+    """
     try:
-        df = pd.read_csv(path_csv, header=[0,1], index_col=0, parse_dates=True)
+        df = pd.read_csv(
+            path_csv,
+            header=[0,1],
+            skiprows=[2],        # ignora a linha “Date,,,,”
+            index_col=0,
+            parse_dates=True
+        )
+        # se há nível 1 chamado 'Close', retorna só esse slice
         if 'Close' in df.columns.get_level_values(1):
-            return df.xs('Close', axis=1, level=1).copy()
-    except Exception as e:
+            return df.xs('Close', level=1, axis=1).copy()
+    except Exception:
         pass
 
+    # fallback para CSV sem multiindex
     df2 = pd.read_csv(path_csv, index_col=0, parse_dates=True)
     close_cols = [c for c in df2.columns if 'Close' in c]
     if not close_cols:
@@ -1610,8 +1622,8 @@ def main():
                     mu_vec, cov_mat, min_w, max_w)#, rf
                 if not ok_opt:
                     st.warning(
-                        "Não foi possível otimizar a carteira manual dentro dos limites definidos. "
-                        f"Motivo: {msg_opt}"
+                        "Não foi possível otimizar a carteira manual dentro dos limites de peso mínimo, peso máximo e número de ativos definidos. Tente relaxar algum desses parâmetros e execute novamente."
+                        #f"Motivo: {msg_opt}"
                     )
                     # Você pode optar por manter w_opt_manual = w_man (igual a manual crua)
                     w_opt_manual = w_man
