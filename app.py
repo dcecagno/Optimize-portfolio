@@ -482,7 +482,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v25")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v26")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1231,7 +1231,7 @@ def main():
     prices_read = prices_read.loc[time_start:time_end]
     
     # Parâmetros para a simulação de Monte Carlo
-    n_sim = 100_000
+    n_sim = 1_000_000
     seed = 42
     alpha_dirichlet = 1
     min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
@@ -1425,14 +1425,14 @@ def main():
         ef_vol_comb_opt, ef_ret_comb_opt = filtrar_fronteira_eficiente(ef_vol_comb_opt, ef_ret_comb_opt)
 
         # Carteiras de Sharpe máximo
-        w_sharpe_aco, sharpe_aco = optimize_max_sharpe(mu_aco.values, cov_aco.values, min_w, max_w) #, rf
-        #w_sharpe_aco = rebalance_weights(w_sharpe_aco, min_w)
+        w_sharpe_aco, sharpe_aco = optimize_max_sharpe(mu_aco.values, cov_aco.values, 0.0, max_w) #, rf
+        w_sharpe_aco = rebalance_weights(w_sharpe_aco, min_w)
 
-        w_sharpe_fii, sharpe_fii = optimize_max_sharpe(mu_fii.values, cov_fii.values, min_w, max_w)#, rf
-        #w_sharpe_fii = rebalance_weights(w_sharpe_fii, min_w)
+        w_sharpe_fii, sharpe_fii = optimize_max_sharpe(mu_fii.values, cov_fii.values, 0.0, max_w)#, rf
+        w_sharpe_fii = rebalance_weights(w_sharpe_fii, min_w)
 
-        w_sharpe_comb, sharpe_comb = optimize_max_sharpe(mu_comb.values, cov_comb.values, min_w, max_w)#, rf
-        #w_sharpe_comb = rebalance_weights(w_sharpe_comb, min_w)
+        w_sharpe_comb, sharpe_comb = optimize_max_sharpe(mu_comb.values, cov_comb.values, 0.0, max_w)#, rf
+        w_sharpe_comb = rebalance_weights(w_sharpe_comb, min_w)
 
         ret_aco = np.exp(portfolio_return(w_sharpe_aco, mu_aco.values)) - 1
         vol_aco = portfolio_volatility(w_sharpe_aco, cov_aco.values)
