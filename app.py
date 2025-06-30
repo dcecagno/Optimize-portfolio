@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.optimize import minimize
 from scipy.interpolate import PchipInterpolator
 from scipy.interpolate import UnivariateSpline
+from scipy.spatial import ConvexHull
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import seaborn as sns
@@ -327,6 +328,28 @@ def pick_best_sim(sim_ret: np.ndarray, sim_vol: np.ndarray, sim_w: np.ndarray):
     idx   = np.nanargmax(sharpe)
     return sim_w[idx], sim_ret[idx], sim_vol[idx], sharpe[idx]
 
+def convex_frontier(vols: np.ndarray, rets: np.ndarray):
+    """
+    Retorna os vértices do upper convex hull de (vols, rets),
+    ordenados por volatilidade ascendente.
+    """
+    pts  = np.column_stack((vols, rets))
+    hull = ConvexHull(pts)
+    # pega só os pontos do hull
+    hull_pts = pts[hull.vertices]
+    # ordena por volatilidade
+    hull_pts = hull_pts[np.argsort(hull_pts[:,0])]
+    # filtra apenas o envelope superior: mantém o maior retorno visto até então
+    frontier = []
+    current_max = -np.inf
+    for v, r in hull_pts:
+        if r > current_max:
+            frontier.append((v, r))
+            current_max = r
+    # separa em dois arrays
+    vol_front, ret_front = zip(*frontier)
+    return np.array(vol_front), np.array(ret_front)
+
 # =======================
 # Funções de Plotagem
 # =======================
@@ -516,7 +539,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v28")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v29")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1453,41 +1476,24 @@ def main():
         sim_ret_comb_s = np.exp(sim_ret_comb) - 1
 
         # 4) Fronteira e melhor sim – AÇÕES
-        pf_vol_aco, pf_ret_aco = pareto_front(sim_vol_aco, sim_ret_aco_s)
+        cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
         w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
             sim_ret_aco_s, sim_vol_aco, sim_pesos_aco
         )
 
 
         # 5) Fronteira e melhor sim – FIIs
-        pf_vol_fii, pf_ret_fii = pareto_front(sim_vol_fii, sim_ret_fii_s)
+        cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
         w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
             sim_ret_fii_s, sim_vol_fii, sim_pesos_fii
         )
 
 
         # 6) Fronteira e melhor sim – COMBINADO
-        pf_vol_comb, pf_ret_comb = pareto_front(sim_vol_comb, sim_ret_comb_s)
+        cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
         w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
             sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
         )
-
-        # 2) Smooth grids
-        n_pts = 500
-
-        vol_lin_aco  = np.linspace(pf_vol_aco.min(),   pf_vol_aco.max(),   n_pts)
-        spline_aco = UnivariateSpline(pf_vol_aco, pf_ret_aco, k=3, s=1e-4)
-        ret_lin_aco  = spline_aco(vol_lin_aco)
-
-
-        vol_lin_fii  = np.linspace(pf_vol_fii.min(),   pf_vol_fii.max(),   n_pts)
-        spline_fii = UnivariateSpline(pf_vol_fii, pf_ret_fii, k=3, s=1e-4)
-        ret_lin_fii  = spline_fii(vol_lin_fii)
-
-        vol_lin_comb = np.linspace(pf_vol_comb.min(),  pf_vol_comb.max(),  n_pts)
-        spline_comb = UnivariateSpline(pf_vol_comb, pf_ret_comb, k=3, s=1e-4)
-        ret_lin_comb  = spline_comb(vol_lin_comb)
-
 
 
         tickers_comb = acoes_validos + fii_validos
@@ -1599,9 +1605,9 @@ def main():
 
         # Plotagem
         plot_results(
-            sim_vol_aco, sim_ret_aco_s, vol_lin_aco, ret_lin_aco, vol_sh_aco, ret_sh_aco,
-            sim_vol_fii, sim_ret_fii_s, vol_lin_fii, ret_lin_fii, vol_sh_fii, ret_sh_fii,
-            sim_vol_comb, sim_ret_comb_s, vol_lin_comb, ret_lin_comb, vol_sh_comb, ret_sh_comb,
+            sim_vol_aco, sim_ret_aco_s, cf_vol_aco, cf_ret_aco, vol_sh_aco, ret_sh_aco,
+            sim_vol_fii, sim_ret_fii_s, cf_vol_fii, cf_ret_fii, vol_sh_fii, ret_sh_fii,
+            sim_vol_comb, sim_ret_comb_s, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
             vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida
         )
 
