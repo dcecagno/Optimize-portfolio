@@ -579,7 +579,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v33")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v34")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1584,7 +1584,25 @@ def main():
                 tickers_man, valores_man = list(tickers_man), list(valores_man)
             else:
                 tickers_man, valores_man = [], []
-                
+
+        faltando2 = [t for t in tickers_man if t not in prices_comb.columns]
+        if faltando2:
+            st.error(
+                "Após o download ainda faltaram estes tickers: "
+                f"{', '.join(faltando2)}. Eles serão removidos."
+            )
+            # remove-os de tickers_man e de valores_man
+            pares_ok = [
+                (t, v) for t, v in zip(tickers_man, valores_man)
+                if t not in faltando2
+            ]
+            if pares_ok:
+                tickers_man, valores_man = zip(*pares_ok)
+                tickers_man, valores_man = list(tickers_man), list(valores_man)
+            else:
+                st.error("Nenhum ticker válido sobrou. Abortando.")
+                st.stop()
+        
         if tickers_man:
             total_man     = sum(valores_man)
             w_man         = np.array([v/total_man for v in valores_man])
