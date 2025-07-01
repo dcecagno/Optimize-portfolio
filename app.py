@@ -578,7 +578,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v39")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v40")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1595,6 +1595,10 @@ def main():
                 prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
                 prices_comb.sort_index(inplace=True)
                 prices_comb.columns = prices_comb.columns.map(str).str.strip()
+
+                rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
+                mu_comb   = rets_comb.mean() * 252
+                cov_comb  = rets_comb.cov()  * 252
 
 
             pares_filtrados = [
