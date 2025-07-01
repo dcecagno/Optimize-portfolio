@@ -1535,8 +1535,9 @@ def main():
             sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
         )
 
-
         tickers_comb = acoes_validos + fii_validos
+
+        tickers_man = normalizar_tickers(tickers_man)
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
         tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
