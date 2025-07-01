@@ -579,7 +579,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v37")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v38")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1596,7 +1596,14 @@ def main():
             else:
                 st.warning("Nenhum ticker válido sobrou na carteira manual.")
                 st.stop()
-       
+
+        tickers_hibrida = []
+        w_hibrida       = np.array([])
+        ret_hibrida     = 0.0
+        vol_hibrida     = 0.0
+        sharpe_hibrida  = 0.0
+        cov_hibrida     = pd.DataFrame()
+
         if tickers_man:
             total_man     = sum(valores_man)
             w_man         = np.array([v/total_man for v in valores_man])
