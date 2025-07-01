@@ -578,7 +578,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v38")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v39")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1642,6 +1642,11 @@ def main():
             ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
 
             # Prepara DataFrame alinhado
+            st.write(">>> tickers_man (para indexar):", tickers_man)
+            st.write(">>> prices_comb.columns:", prices_comb.columns.tolist())
+            falt = [t for t in tickers_man if t not in prices_comb.columns]
+            st.write(">>> que está faltando:", falt)
+
             prices_manual = prices_comb[tickers_man].dropna()
             rets_manual   = np.log(prices_manual / prices_manual.shift(1)).dropna()
 
