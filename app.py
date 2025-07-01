@@ -1606,17 +1606,10 @@ def main():
                 st.warning("Nenhum ticker válido sobrou na carteira manual.")
                 st.stop()
 
-        st.write(f"DEBUG {ticker}: shape={prices_comb.shape}, data de {prices_comb.index.min()} a {prices_comb.index.max()}")
-        st.write(prices_comb.head(3))
-        st.write(prices_comb.tail(3))
-
-        st.write("→ tickers_man finais:", tickers_man)
-        st.write("→ prices_comb cols:", prices_comb.columns.tolist())
         falt = [t for t in tickers_man if t not in prices_comb.columns]
         if falt:
             st.error(f"Não encontrei colunas para {falt}. Removido.")
             tickers_man = [t for t in tickers_man if t in prices_comb.columns]
-
         
         tickers_hibrida = []
         w_hibrida       = np.array([])
@@ -1624,7 +1617,6 @@ def main():
         vol_hibrida     = 0.0
         sharpe_hibrida  = 0.0
         cov_hibrida     = pd.DataFrame()
-        st.write(">> Antes de prices_comb[tickers_man]:", tickers_man)
 
         if tickers_man:
             total_man     = sum(valores_man)
@@ -1634,11 +1626,6 @@ def main():
             ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
 
             # Prepara DataFrame alinhado
-            st.write(">>> tickers_man (para indexar):", tickers_man)
-            st.write(">>> prices_comb.columns:", prices_comb.columns.tolist())
-            falt = [t for t in tickers_man if t not in prices_comb.columns]
-            st.write(">>> que está faltando:", falt)
-
             prices_manual = prices_comb[tickers_man].dropna()
             rets_manual   = np.log(prices_manual / prices_manual.shift(1)).dropna()
 
