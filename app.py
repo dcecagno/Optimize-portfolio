@@ -579,7 +579,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v36")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v37")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1554,22 +1554,26 @@ def main():
                         ticker,
                         start=prices_comb.index.min(),
                         end=prices_comb.index.max(),
+                        auto_adjust= True,
+                        group_by   = 'ticker',
                         progress=False
                     )
-                    # pega só o nível=0 'Close', resultando num DF com colunas=[ticker]
-                    df = df_multi['Close'].copy()
-
-                    st.write(f"DEBUG {ticker}: shape={df.shape}, data de {df.index.min()} a {df.index.max()}")
-                    st.write(df.head(3))
-                    st.write(df.tail(3))
-
-
-                    if df.empty or df['Close'].dropna().empty:
-                        st.error(f"Sem dados históricos suficientes para {ticker}. Removido")
+                    
+                    if ticker in df_multi.columns.levels[0]:
+                        ser_close = df_multi[ticker]['Close']
+                    else:
+                        st.error(f"{ticker} não veio no raw.columns"); 
                         continue
 
-                    df = df.rename(columns={'Close': ticker})
-                    novos_list.append(df)
+                    # descarta se não veio dado algum
+                    if ser_close.dropna().empty:
+                        st.error(f"Sem dados válidos de Close para {ticker}. Removido.")
+                        continue
+
+                    # transforma em DF de 1 coluna, nomeada pelo próprio ticker
+                    df_close = ser_close.to_frame(name=ticker)
+
+                    novos_list.append(df_close)
                     baixados.append(ticker)
 
                 except Exception as e:
@@ -1590,26 +1594,9 @@ def main():
                 tickers_man, valores_man = zip(*pares_filtrados)
                 tickers_man, valores_man = list(tickers_man), list(valores_man)
             else:
-                tickers_man, valores_man = [], []
-
-        faltando2 = [t for t in tickers_man if t not in prices_comb.columns]
-        if faltando2:
-            st.error(
-                "Após o download ainda faltaram estes tickers: "
-                f"{', '.join(faltando2)}. Eles serão removidos."
-            )
-            # remove-os de tickers_man e de valores_man
-            pares_ok = [
-                (t, v) for t, v in zip(tickers_man, valores_man)
-                if t not in faltando2
-            ]
-            if pares_ok:
-                tickers_man, valores_man = zip(*pares_ok)
-                tickers_man, valores_man = list(tickers_man), list(valores_man)
-            else:
-                st.error("Nenhum ticker válido sobrou. Abortando.")
+                st.warning("Nenhum ticker válido sobrou na carteira manual.")
                 st.stop()
-        
+       
         if tickers_man:
             total_man     = sum(valores_man)
             w_man         = np.array([v/total_man for v in valores_man])
