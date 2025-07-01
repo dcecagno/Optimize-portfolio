@@ -1580,6 +1580,10 @@ def main():
                     # transforma em DF de 1 coluna, nomeada pelo próprio ticker
                     df_close = ser_close.to_frame(name=ticker)
 
+                    st.write(f"DEBUG {ticker}: shape={df_close.shape}, data de {df_close.index.min()} a {df_close.index.max()}")
+                    st.write(df_close.head(3))
+                    st.write(df_close.tail(3))
+
                     novos_list.append(df_close)
                     baixados.append(ticker)
 
