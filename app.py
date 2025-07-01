@@ -1,4 +1,3 @@
-import os
 import yfinance as yf
 import numpy as np
 import pandas as pd
@@ -1542,6 +1541,10 @@ def main():
         # Verifica se há tickers da carteira manual que não estão em prices_comb
         tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
 
+        st.write(f"DEBUG {ticker}: shape={prices_comb.shape}, data de {prices_comb.index.min()} a {prices_comb.index.max()}")
+        st.write(prices_comb.head(3))
+        st.write(prices_comb.tail(3))
+        
         if tickers_faltando:
             st.warning(f"Buscando dados no Yahoo Finance para: {', '.join(tickers_faltando)}")
             
@@ -1559,6 +1562,10 @@ def main():
                         progress=False
                     )
                     
+                    st.write(f"DEBUG {ticker}: shape={df_multi.shape}, data de {df_multi.index.min()} a {df_multi.index.max()}")
+                    st.write(df_multi.head(3))
+                    st.write(df_multi.tail(3))
+
                     if ticker in df_multi.columns.levels[0]:
                         ser_close = df_multi[ticker]['Close']
                     else:
