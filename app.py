@@ -1608,6 +1608,10 @@ def main():
                 st.warning("Nenhum ticker válido sobrou na carteira manual.")
                 st.stop()
 
+        st.write(f"DEBUG {ticker}: shape={prices_comb.shape}, data de {prices_comb.index.min()} a {prices_comb.index.max()}")
+        st.write(prices_comb.head(3))
+        st.write(prices_comb.tail(3))
+        
         tickers_hibrida = []
         w_hibrida       = np.array([])
         ret_hibrida     = 0.0
