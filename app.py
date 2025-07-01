@@ -579,7 +579,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v35")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v36")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1550,12 +1550,14 @@ def main():
 
             for ticker in tickers_faltando:
                 try:
-                    df = yf.download(
+                    df_multi = yf.download(
                         ticker,
                         start=prices_comb.index.min(),
                         end=prices_comb.index.max(),
                         progress=False
-                    )[['Close']]
+                    )
+                    # pega só o nível=0 'Close', resultando num DF com colunas=[ticker]
+                    df = df_multi['Close'].copy()
 
                     st.write(f"DEBUG {ticker}: shape={df.shape}, data de {df.index.min()} a {df.index.max()}")
                     st.write(df.head(3))
