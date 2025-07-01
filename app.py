@@ -1594,11 +1594,17 @@ def main():
                 novos_dados = pd.concat(novos_list, axis=1)
                 prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
                 prices_comb.sort_index(inplace=True)
+                prices_comb.columns = prices_comb.columns.map(str).str.strip()
+
 
             pares_filtrados = [
                 (t, v) for t, v in zip(tickers_man, valores_man)
                 if (t not in tickers_faltando) or (t in baixados)
             ]
+            
+            tickers_man = [t.strip() for t in tickers_man]
+            assert all(t in prices_comb.columns for t in tickers_man), \
+                f"Tickers faltando: {[t for t in tickers_man if t not in prices_comb.columns]}"
 
             # descompacta de volta (ou vazio, se não sobrou ninguém)
             if pares_filtrados:
@@ -1611,6 +1617,14 @@ def main():
         st.write(f"DEBUG {ticker}: shape={prices_comb.shape}, data de {prices_comb.index.min()} a {prices_comb.index.max()}")
         st.write(prices_comb.head(3))
         st.write(prices_comb.tail(3))
+
+        st.write("→ tickers_man finais:", tickers_man)
+        st.write("→ prices_comb cols:", prices_comb.columns.tolist())
+        falt = [t for t in tickers_man if t not in prices_comb.columns]
+        if falt:
+            st.error(f"Não encontrei colunas para {falt}. Removido.")
+            tickers_man = [t for t in tickers_man if t in prices_comb.columns]
+
         
         tickers_hibrida = []
         w_hibrida       = np.array([])
@@ -1618,6 +1632,7 @@ def main():
         vol_hibrida     = 0.0
         sharpe_hibrida  = 0.0
         cov_hibrida     = pd.DataFrame()
+        st.write(">> Antes de prices_comb[tickers_man]:", tickers_man)
 
         if tickers_man:
             total_man     = sum(valores_man)
