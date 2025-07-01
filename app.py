@@ -579,7 +579,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v34")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v35")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1556,6 +1556,11 @@ def main():
                         end=prices_comb.index.max(),
                         progress=False
                     )[['Close']]
+
+                    st.write(f"DEBUG {ticker}: shape={df.shape}, data de {df.index.min()} a {df.index.max()}")
+                    st.write(df.head(3))
+                    st.write(df.tail(3))
+
 
                     if df.empty or df['Close'].dropna().empty:
                         st.error(f"Sem dados históricos suficientes para {ticker}. Removido")
