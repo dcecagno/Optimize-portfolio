@@ -2,8 +2,6 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from scipy.interpolate import PchipInterpolator
-from scipy.interpolate import UnivariateSpline
 from scipy.spatial import ConvexHull
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -578,7 +576,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v40")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v41")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1558,25 +1556,26 @@ def main():
                         progress=False
                     )
 
-                    if ticker in df_multi.columns.levels[0]:
-                        ser_close = df_multi[ticker]['Close']
-                    else:
-                        st.error(f"{ticker} não veio no raw.columns"); 
+                    if ticker not in df_multi.columns.levels[0]:
+                        st.error(f"Ticker {ticker} não existe no Yahoo Finance. Removido da carteira.")
                         continue
 
-                    # descarta se não veio dado algum
-                    if ser_close.dropna().empty:
-                        st.error(f"Sem dados válidos de Close para {ticker}. Removido.")
+                    # 3) Extrai série de fechamento
+                    ser_close = df_multi[ticker]['Close']
+
+                    # 4) Se a série veio, mas está totalmente vazia
+                    if ser_close.empty:
+                        st.error(f"Ticker {ticker} não existe ou não tem histórico no Yahoo. Removido da carteira.")
                         continue
 
-                    # transforma em DF de 1 coluna, nomeada pelo próprio ticker
+                    # 5) Transforma em DF de 1 coluna e acumula na lista
                     df_close = ser_close.to_frame(name=ticker)
-
                     novos_list.append(df_close)
                     baixados.append(ticker)
 
-                except Exception as e:
-                    st.error(f"Erro ao buscar {ticker}: {e}")
+                except Exception:
+                    st.error(f"Erro ao buscar {ticker}. Verifique o nome do ativo e a conexão.")
+                    continue
 
             if novos_list:
                 novos_dados = pd.concat(novos_list, axis=1)
@@ -1595,8 +1594,24 @@ def main():
             ]
             
             tickers_man = [t.strip() for t in tickers_man]
-            assert all(t in prices_comb.columns for t in tickers_man), \
-                f"Tickers faltando: {[t for t in tickers_man if t not in prices_comb.columns]}"
+            prices_comb.columns = prices_comb.columns.map(str).str.strip()
+            tickers_man = [str(t).strip() for t in tickers_man]
+
+            faltantes = [t for t in tickers_man if t not in prices_comb.columns]
+            if faltantes:
+                st.error(
+                    f"Os seguintes tickers não foram encontrados no Yahoo Finance: "
+                    f"{', '.join(faltantes)}. "
+                    "Verifique se você digitou corretamente e remova-os ou corrija."
+                )
+                # filtra só os que existem, mantendo os valores alinhados
+                pares_ok = [(t, v) for t, v in zip(tickers_man, valores_man) if t in prices_comb.columns]
+                if not pares_ok:
+                    st.error("Nenhum ticker válido sobrou na carteira manual. Reinicie e insira tickers válidos.")
+                    st.stop()
+                tickers_man, valores_man = zip(*pares_ok)
+                tickers_man, valores_man = list(tickers_man), list(valores_man)
+
 
             # descompacta de volta (ou vazio, se não sobrou ninguém)
             if pares_filtrados:
