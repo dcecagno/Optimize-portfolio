@@ -580,7 +580,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v45")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v46")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1517,31 +1517,24 @@ def main():
         sim_ret_comb_s = np.exp(sim_ret_comb) - 1
 
         # 4) Fronteira e melhor sim – AÇÕES
-        ex_ret_aco = sim_ret_aco_s - rf
-        cf_vol_aco, cf_exret_aco = convex_frontier(sim_vol_aco, ex_ret_aco)
-        cf_ret_aco = cf_exret_aco + rf
-
+        cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
         w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
             sim_ret_aco_s, sim_vol_aco, sim_pesos_aco
         )
 
         # 5) Fronteira e melhor sim – FIIs
-        ex_ret_fii = sim_ret_fii_s - rf
-        cf_vol_fii, cf_exret_fii = convex_frontier(sim_vol_fii, ex_ret_fii)
-        cf_ret_fii = cf_exret_fii + rf
-
+        cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
         w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
             sim_ret_fii_s, sim_vol_fii, sim_pesos_fii
         )
 
-        # 6) Fronteira e melhor sim – COMBINADO
-        ex_ret_comb = sim_ret_comb_s - rf
-        cf_vol_comb, cf_exret_comb = convex_frontier(sim_vol_comb, ex_ret_comb)
-        cf_ret_comb = cf_exret_comb + rf
 
+        # 6) Fronteira e melhor sim – COMBINADO
+        cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
         w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
             sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
         )
+
 
         tickers_comb = acoes_validos + fii_validos
 
