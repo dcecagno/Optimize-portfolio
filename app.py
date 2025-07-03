@@ -1722,9 +1722,12 @@ def main():
             })
 
         # Converte em DataFrame e ordena
-        df_stats = pd.DataFrame(stats)
-        df_stats = df_stats.sort_values("Sharpe", ascending=False)
+        df_stats = pd.DataFrame(stats) \
+            .sort_values("Sharpe", ascending=False) \
+            .reset_index(drop=True)         # <-- aí o índice vira 0,1,2,…
 
+        df_stats.index.name = "Rank"       # opcional: dá um nome à coluna de índice
+        df_stats.index += 1
 
 
         # Plotagem
