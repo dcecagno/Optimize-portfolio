@@ -581,7 +581,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v42")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v43")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1518,21 +1518,28 @@ def main():
         sim_ret_comb_s = np.exp(sim_ret_comb) - 1
 
         # 4) Fronteira e melhor sim – AÇÕES
-        cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
+        ex_ret_aco = sim_ret_aco_s - rf
+        cf_vol_aco, cf_exret_aco = convex_frontier(sim_vol_aco, ex_ret_aco)
+        cf_ret_aco = cf_exret_aco + rf
+
         w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
             sim_ret_aco_s, sim_vol_aco, sim_pesos_aco, rf
         )
 
-
         # 5) Fronteira e melhor sim – FIIs
-        cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
+        ex_ret_fii = sim_ret_fii_s - rf
+        cf_vol_fii, cf_exret_fii = convex_frontier(sim_vol_fii, ex_ret_fii)
+        cf_ret_fii = cf_exret_fii + rf
+
         w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
             sim_ret_fii_s, sim_vol_fii, sim_pesos_fii, rf
         )
 
-
         # 6) Fronteira e melhor sim – COMBINADO
-        cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
+        ex_ret_comb = sim_ret_comb_s - rf
+        cf_vol_comb, cf_exret_comb = convex_frontier(sim_vol_comb, ex_ret_comb)
+        cf_ret_comb = cf_exret_comb + rf
+
         w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
             sim_ret_comb_s, sim_vol_comb, sim_pesos_comb, rf
         )
@@ -1659,7 +1666,7 @@ def main():
                 # Carteira manual original
                 ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
                 vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
-                sharpe_man = (ret_man - rf) / vol_man #ajustado aqui
+                sharpe_man = (ret_man - rf) / vol_man
 
                 # Carteira manual otimizada
                 w_opt_manual, sharpe_opt_manual, ok_opt, msg_opt = optimize_max_sharpe(
@@ -1669,7 +1676,6 @@ def main():
                         "Não foi possível otimizar a carteira manual dentro dos limites de peso mínimo, peso máximo e número de ativos definidos. Tente relaxar algum desses parâmetros e execute novamente."
                         #f"Motivo: {msg_opt}"
                     )
-                    # Você pode optar por manter w_opt_manual = w_man (igual a manual crua)
                     w_opt_manual = w_man
                     sharpe_opt_manual = sharpe_man
 
