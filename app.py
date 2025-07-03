@@ -409,6 +409,11 @@ def plot_results(
     plt.figure(figsize=(12,8))
 
     # Monte Carlo e Fronteiras
+    plt.scatter(sim_vol_comb, sim_ret_comb_s, s=8, alpha=0.12, c='red', label='MC – Combinado')
+    plt.plot(vol_lin_comb, ret_lin_comb, '--', c='red', lw=2, label='FE (MC) – Combinado')
+    plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, label='Sharpe Max – Combinado')
+
+
     plt.scatter(sim_vol_aco, sim_ret_aco_s, s=8, alpha=0.12, c='blue', label='MC – Ações')
     plt.plot(vol_lin_aco, ret_lin_aco, '--', c='blue', lw=2, label='FE (MC) – Ações')
     plt.scatter(vol_sh_aco, ret_sh_aco, marker='*', c='blue', s=180, label='Sharpe Max – Ações')
@@ -417,11 +422,6 @@ def plot_results(
     plt.scatter(sim_vol_fii, sim_ret_fii_s, s=8, alpha=0.12, c='green', label='MC – FIIs')
     plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2, label='FE (MC) – FIIs')
     plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, label='Sharpe Max – FIIs')
-
-
-    plt.scatter(sim_vol_comb, sim_ret_comb_s, s=8, alpha=0.12, c='red', label='MC – Combinado')
-    plt.plot(vol_lin_comb, ret_lin_comb, '--', c='red', lw=2, label='FE (MC) – Combinado')
-    plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, label='Sharpe Max – Combinado')
 
 
     # Carteiras manuais
@@ -576,7 +576,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v41")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v42")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1600,9 +1600,9 @@ def main():
             faltantes = [t for t in tickers_man if t not in prices_comb.columns]
             if faltantes:
                 st.error(
-                    f"Os seguintes tickers não foram encontrados no Yahoo Finance: "
+                    f"Não foi encontrado no Yahoo Finance: "
                     f"{', '.join(faltantes)}. "
-                    "Verifique se você digitou corretamente e remova-os ou corrija."
+                    "Verifique se você digitou o ticker corretamente e remova-o ou corrija."
                 )
                 # filtra só os que existem, mantendo os valores alinhados
                 pares_ok = [(t, v) for t, v in zip(tickers_man, valores_man) if t in prices_comb.columns]
@@ -1691,6 +1691,42 @@ def main():
             st.warning("Nenhum ticker válido foi inserido na carteira manual.")
             ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
+
+        # 12) Estatísticas individuais por ticker
+        stats = []
+
+        # Para ações: usa mu_aco e cov_aco
+        for t in acoes_validos:
+            mu   = mu_aco[t]
+            vol  = np.sqrt(cov_aco.loc[t, t])
+            sharpe = mu / vol
+            stats.append({
+                "Ticker": t.replace(".SA", ""),
+                "Ativo":  "Ação",
+                "Sharpe": sharpe,
+                "Retorno": mu,
+                "Volatilidade": vol
+            })
+
+        # Para FIIs: usa mu_fii e cov_fii
+        for t in fii_validos:
+            mu   = mu_fii[t]
+            vol  = np.sqrt(cov_fii.loc[t, t])
+            sharpe = mu / vol
+            stats.append({
+                "Ticker": t.replace(".SA", ""),
+                "Ativo":  "FII",
+                "Sharpe": sharpe,
+                "Retorno": mu,
+                "Volatilidade": vol
+            })
+
+        # Converte em DataFrame e ordena
+        df_stats = pd.DataFrame(stats)
+        df_stats = df_stats.sort_values("Sharpe", ascending=False)
+
+
+
         # Plotagem
         plot_results(
             sim_vol_aco, sim_ret_aco_s, cf_vol_aco, cf_ret_aco, vol_sh_aco, ret_sh_aco,
@@ -1719,6 +1755,16 @@ def main():
                 vol=v,
                 min_weight=0.001
             )
+                # Exibe no Streamlit
+        st.subheader("📊 Métricas Individuais dos Ativos")
+        st.dataframe(
+            df_stats.style.format({
+                "Sharpe":       "{:.2f}",
+                "Retorno":      "{:.2%}",
+                "Volatilidade": "{:.2%}"
+            }),
+            use_container_width=True
+        )
 
 if __name__ == "__main__":
     main()
