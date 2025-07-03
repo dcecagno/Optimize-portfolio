@@ -363,10 +363,9 @@ def pareto_front(vols: np.ndarray, rets: np.ndarray):
 def pick_best_sim(
         sim_ret: np.ndarray, 
         sim_vol: np.ndarray, 
-        sim_w: np.ndarray,
-        rf: float = 0.0
+        sim_w: np.ndarray
         ):
-    sharpe = (sim_ret - rf) / sim_vol
+    sharpe = sim_ret / sim_vol
     idx   = np.nanargmax(sharpe)
     return sim_w[idx], sim_ret[idx], sim_vol[idx], sharpe[idx]
 
@@ -581,7 +580,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v44")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v45")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1522,11 +1521,9 @@ def main():
         cf_vol_aco, cf_exret_aco = convex_frontier(sim_vol_aco, ex_ret_aco)
         cf_ret_aco = cf_exret_aco + rf
 
-        w_star_aco, sharpe_aco, ok, _ = optimize_max_sharpe(
-            mu_aco.values, cov_aco.values, min_w, max_w, rf
+        w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
+            sim_ret_aco_s, sim_vol_aco, sim_pesos_aco
         )
-        ret_sh_aco = w_star_aco.dot(mu_aco.values)
-        vol_sh_aco = np.sqrt(w_star_aco.T @ cov_aco.values @ w_star_aco)
 
         # 5) Fronteira e melhor sim – FIIs
         ex_ret_fii = sim_ret_fii_s - rf
@@ -1534,7 +1531,7 @@ def main():
         cf_ret_fii = cf_exret_fii + rf
 
         w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
-            sim_ret_fii_s, sim_vol_fii, sim_pesos_fii, rf
+            sim_ret_fii_s, sim_vol_fii, sim_pesos_fii
         )
 
         # 6) Fronteira e melhor sim – COMBINADO
@@ -1543,7 +1540,7 @@ def main():
         cf_ret_comb = cf_exret_comb + rf
 
         w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
-            sim_ret_comb_s, sim_vol_comb, sim_pesos_comb, rf
+            sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
         )
 
         tickers_comb = acoes_validos + fii_validos
@@ -1753,7 +1750,7 @@ def main():
         )
 
         cenarios = [
-            ("Carteira de Sharpe Máximo – AÇÕES", w_star_aco, acoes_validos, cov_aco, sharpe_aco, ret_sh_aco, vol_sh_aco),
+            ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_aco, ret_sh_aco, vol_sh_aco),
             ("Carteira de Sharpe Máximo – FIIs", w_sharpe_fii, fii_validos,  cov_fii, sharpe_fii, ret_sh_fii, vol_sh_fii),
             ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_comb, ret_sh_comb, vol_sh_comb),
             ("Carteira Manual", w_man, tickers_man, cov_manual, sharpe_man, ret_man, vol_man),
