@@ -184,12 +184,12 @@ def simulate_portfolios_cardinalidade_controlada(
 # Funções de Otimização
 # =======================
 
-def negative_sharpe(w, mu, cov): #, rf=0.0
+def negative_sharpe(w, mu, cov, rf):
     ret = np.dot(mu, w)
     vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
-    return -ret / vol #-(ret - rf) / vol
+    return -(ret - rf) / vol
     
-def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0): #rf=0.0, 
+def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0, rf=0.0): 
     n = len(mu)
     init = np.repeat(1/n, n)
     bounds = [(min_w, max_w)] * n
@@ -197,7 +197,7 @@ def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0): #rf=0.0,
     res = minimize(
         negative_sharpe, 
         init, 
-        args=(mu, cov), #, rf
+        args=(mu, cov, rf),
         method='SLSQP', 
         bounds=bounds, 
         constraints=cons
@@ -251,14 +251,14 @@ def rebalance_weights(weights, min_w=0.03):
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
 
-def otimizar_carteira_hibrida(
-    tickers_man: list,
+def otimizar_carteira_hibrida(tickers_man: list,
     valores_man: list,
     ativos_sugeridos: list,
     mu_comb: pd.Series,
     cov_comb: pd.DataFrame,
-    percentual_adicional: float = 0.3
-):
+    percentual_adicional: float = 0.3,
+    rf: float = 0.0
+    ):
     # 1) Calcular o "total híbrido" (= 100% da carteira manual + pct adicional)
     total_hibrido = sum(valores_man) * (1 + percentual_adicional)
 
@@ -311,7 +311,7 @@ def otimizar_carteira_hibrida(
     res = minimize(
         negative_sharpe,
         init,
-        args=(mu_h, cov_h),
+        args=(mu_h, cov_h, rf),
         method='SLSQP',
         bounds=bounds,
         constraints=cons
@@ -328,7 +328,7 @@ def otimizar_carteira_hibrida(
         w_man = np.array([v/sum(valores_man) for v in valores_man])
         ret_man = np.dot(w_man, mu_h[:len(w_man)])
         vol_man = np.sqrt(w_man.T @ cov_h[:len(w_man),:len(w_man)] @ w_man)
-        sharpe_man = ret_man / vol_man
+        sharpe_man = (ret_man - rf) / vol_man
         return tickers_man, w_man, ret_man, vol_man, sharpe_man
 
     # 9) Se deu certo, monta resultados
@@ -336,7 +336,7 @@ def otimizar_carteira_hibrida(
     w_hibrida = res.x
     ret_h = w_hibrida.dot(mu_h)
     vol_h = np.sqrt(w_hibrida.dot(cov_h).dot(w_hibrida))
-    sharpe_h = ret_h / vol_h
+    sharpe_h = (ret_h - rf) / vol_h
 
     limiar = 1e-6
     ativos_nonzero = [(t, w) for t, w in zip(tickers_hibrida, w_hibrida) if w > limiar]
@@ -360,8 +360,13 @@ def pareto_front(vols: np.ndarray, rets: np.ndarray):
     return vols[mask], rets[mask]
 
 # 2) Encontra a simulação de máximo Sharpe entre as válidas
-def pick_best_sim(sim_ret: np.ndarray, sim_vol: np.ndarray, sim_w: np.ndarray):
-    sharpe = sim_ret / sim_vol
+def pick_best_sim(
+        sim_ret: np.ndarray, 
+        sim_vol: np.ndarray, 
+        sim_w: np.ndarray,
+        rf: float = 0.0
+        ):
+    sharpe = (sim_ret - rf) / sim_vol
     idx   = np.nanargmax(sharpe)
     return sim_w[idx], sim_ret[idx], sim_vol[idx], sharpe[idx]
 
@@ -1332,13 +1337,13 @@ def main():
     max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
     min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
     max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
-    #rf_raw = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=10)
+    rf_raw = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=10)
 
     # Converte para proporção (0 a 1)
     min_w = min_w_percent / 100
     max_w = max_w_percent / 100
-    #rf_percent = rf_raw / 100
-    #rf = (1 + rf_percent) ** anos - 1
+    rf_percent = rf_raw / 100
+    rf = (1 + rf_percent) ** anos - 1
 
     # Carteira manual
     st.subheader("Carteira Manual")
@@ -1515,21 +1520,21 @@ def main():
         # 4) Fronteira e melhor sim – AÇÕES
         cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
         w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
-            sim_ret_aco_s, sim_vol_aco, sim_pesos_aco
+            sim_ret_aco_s, sim_vol_aco, sim_pesos_aco, rf
         )
 
 
         # 5) Fronteira e melhor sim – FIIs
         cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
         w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
-            sim_ret_fii_s, sim_vol_fii, sim_pesos_fii
+            sim_ret_fii_s, sim_vol_fii, sim_pesos_fii, rf
         )
 
 
         # 6) Fronteira e melhor sim – COMBINADO
         cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
         w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
-            sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
+            sim_ret_comb_s, sim_vol_comb, sim_pesos_comb, rf
         )
 
         tickers_comb = acoes_validos + fii_validos
@@ -1654,11 +1659,11 @@ def main():
                 # Carteira manual original
                 ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
                 vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
-                sharpe_man = ret_man / vol_man #(ret_man - rf) / vol_man
+                sharpe_man = (ret_man - rf) / vol_man #ajustado aqui
 
                 # Carteira manual otimizada
                 w_opt_manual, sharpe_opt_manual, ok_opt, msg_opt = optimize_max_sharpe(
-                    mu_vec, cov_mat, min_w, max_w)#, rf
+                    mu_vec, cov_mat, min_w, max_w, rf)
                 if not ok_opt:
                     st.warning(
                         "Não foi possível otimizar a carteira manual dentro dos limites de peso mínimo, peso máximo e número de ativos definidos. Tente relaxar algum desses parâmetros e execute novamente."
@@ -1680,7 +1685,8 @@ def main():
                         [],                   # 3) ativos_sugeridos → vazio faz a função escolher
                         mu_comb,              # 4) pd.Series de retornos combinados
                         cov_comb,             # 5) pd.DataFrame de covariâncias combinadas
-                        percentual_adicional  # 6) float em [0,1]
+                        percentual_adicional, # 6) float em [0,1]
+                        rf                    # 7) taxa livre de risco
                     )
                 cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
 
@@ -1699,7 +1705,7 @@ def main():
         for t in acoes_validos:
             mu   = mu_aco[t]
             vol  = np.sqrt(cov_aco.loc[t, t])
-            sharpe = mu / vol
+            sharpe = (mu - rf) / vol
             stats.append({
                 "Ticker": t.replace(".SA", ""),
                 "Ativo":  "Ação",
@@ -1712,7 +1718,7 @@ def main():
         for t in fii_validos:
             mu   = mu_fii[t]
             vol  = np.sqrt(cov_fii.loc[t, t])
-            sharpe = mu / vol
+            sharpe = (mu - rf) / vol
             stats.append({
                 "Ticker": t.replace(".SA", ""),
                 "Ativo":  "FII",
