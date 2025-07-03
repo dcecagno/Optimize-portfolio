@@ -580,7 +580,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v46")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v47")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1521,20 +1521,21 @@ def main():
         w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
             sim_ret_aco_s, sim_vol_aco, sim_pesos_aco
         )
+        sharpe_liquida_aco = (ret_sh_aco - rf) / vol_sh_aco
 
         # 5) Fronteira e melhor sim – FIIs
         cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
         w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
             sim_ret_fii_s, sim_vol_fii, sim_pesos_fii
         )
-
+        sharpe_liquida_fii = (ret_sh_fii - rf) / vol_sh_fii
 
         # 6) Fronteira e melhor sim – COMBINADO
         cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
         w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
             sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
         )
-
+        sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
 
         tickers_comb = acoes_validos + fii_validos
 
@@ -1743,9 +1744,9 @@ def main():
         )
 
         cenarios = [
-            ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_aco, ret_sh_aco, vol_sh_aco),
-            ("Carteira de Sharpe Máximo – FIIs", w_sharpe_fii, fii_validos,  cov_fii, sharpe_fii, ret_sh_fii, vol_sh_fii),
-            ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_comb, ret_sh_comb, vol_sh_comb),
+            ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_liquida_aco, ret_sh_aco, vol_sh_aco),
+            ("Carteira de Sharpe Máximo – FIIs", w_sharpe_fii, fii_validos,  cov_fii, sharpe_liquida_fii, ret_sh_fii, vol_sh_fii),
+            ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_liquida_comb, ret_sh_comb, vol_sh_comb),
             ("Carteira Manual", w_man, tickers_man, cov_manual, sharpe_man, ret_man, vol_man),
             ("Carteira Manual Otimizada", w_opt_manual, tickers_man, cov_opt_manual, sharpe_opt_manual, ret_opt_manual, vol_opt_manual),
             (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)", w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida),
