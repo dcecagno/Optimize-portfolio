@@ -581,7 +581,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v43")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v44")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1522,9 +1522,11 @@ def main():
         cf_vol_aco, cf_exret_aco = convex_frontier(sim_vol_aco, ex_ret_aco)
         cf_ret_aco = cf_exret_aco + rf
 
-        w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
-            sim_ret_aco_s, sim_vol_aco, sim_pesos_aco, rf
+        w_star_aco, sharpe_aco, ok, _ = optimize_max_sharpe(
+            mu_aco.values, cov_aco.values, min_w, max_w, rf
         )
+        ret_sh_aco = w_star_aco.dot(mu_aco.values)
+        vol_sh_aco = np.sqrt(w_star_aco.T @ cov_aco.values @ w_star_aco)
 
         # 5) Fronteira e melhor sim – FIIs
         ex_ret_fii = sim_ret_fii_s - rf
@@ -1751,7 +1753,7 @@ def main():
         )
 
         cenarios = [
-            ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_aco, ret_sh_aco, vol_sh_aco),
+            ("Carteira de Sharpe Máximo – AÇÕES", w_star_aco, acoes_validos, cov_aco, sharpe_aco, ret_sh_aco, vol_sh_aco),
             ("Carteira de Sharpe Máximo – FIIs", w_sharpe_fii, fii_validos,  cov_fii, sharpe_fii, ret_sh_fii, vol_sh_fii),
             ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_comb, ret_sh_comb, vol_sh_comb),
             ("Carteira Manual", w_man, tickers_man, cov_manual, sharpe_man, ret_man, vol_man),
