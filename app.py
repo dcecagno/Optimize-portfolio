@@ -1763,7 +1763,7 @@ def main():
                 vol=v,
                 min_weight=0.001
             )
-            st.markdown("---")
+            st.markdown("**" + "—" * 50 + "**")
 
                 # Exibe no Streamlit
         st.subheader("📊 Métricas Individuais dos Ativos")
