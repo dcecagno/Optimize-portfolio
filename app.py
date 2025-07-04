@@ -1432,7 +1432,6 @@ def main():
         st.write("[LOG] FIIs carregados:", fii_validos)
 
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
-        st.progress()
 
         # Cria os DataFrames filtrados para as simulações
         prices_aco  = prices_read[acoes_validos]
