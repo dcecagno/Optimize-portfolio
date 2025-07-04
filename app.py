@@ -580,7 +580,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v47")
+    st.title("Simulação de Carteiras e Fronteira Eficiente: v48")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1336,7 +1336,7 @@ def main():
     max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
     min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
     max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
-    rf_raw = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=10)
+    rf_raw = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=5)
 
     # Converte para proporção (0 a 1)
     min_w = min_w_percent / 100
@@ -1432,6 +1432,7 @@ def main():
         st.write("[LOG] FIIs carregados:", fii_validos)
 
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
+        st.progress()
 
         # Cria os DataFrames filtrados para as simulações
         prices_aco  = prices_read[acoes_validos]
