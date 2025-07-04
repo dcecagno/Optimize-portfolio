@@ -1763,6 +1763,8 @@ def main():
                 vol=v,
                 min_weight=0.001
             )
+            st.divider()
+
                 # Exibe no Streamlit
         st.subheader("📊 Métricas Individuais dos Ativos")
         st.dataframe(
