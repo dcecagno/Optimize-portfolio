@@ -84,101 +84,46 @@ def filtrar_fronteira_eficiente(vols, rets):
 # Funções de Simulação
 # =======================
 
-def simulate_portfolios(prices: pd.DataFrame, tickers: list, n_sim: int,
-                        min_assets: int, max_assets: int, min_w: float,
-                        max_w: float, seed: int, alpha_dirichlet: float = 0.3):
-    """
-    Simula carteiras via Monte Carlo utilizando distribuição Dirichlet
-    para gerar os pesos, calcula retorno e risco, e filtra carteiras
-    que atendem a:
-        - cardinalidade entre min_assets e max_assets (via min_w)
-        - peso máximo <= max_w
-
-    Parâmetro alpha_dirichlet controla a concentração: quanto menor,
-    maior a chance de carteiras mais concentradas (sugestão: 0.1 a 0.5).
-    """
-    # Cálculo dos log-retornos e anualização
-    rets = np.log(prices / prices.shift(1)).dropna()
-    mu   = rets.mean() * 252
-    cov  = rets.cov()  * 252
-
-    # Geração dos pesos com Dirichlet esparsa
-    rng = np.random.default_rng(seed)
-    sim_w = rng.dirichlet(alpha_dirichlet * np.ones(len(tickers)), size=n_sim)
-
-    # Cálculo das métricas
-    sim_ret = sim_w.dot(mu.values)
-    sim_vol = np.sqrt(np.einsum('ij,jk,ik->i', sim_w, cov.values, sim_w))
-
-    # Filtros
-    card   = (sim_w >= min_w).sum(axis=1)
-    maxpos = sim_w.max(axis=1)
-    mask = (card >= min_assets) & (card <= max_assets) & (maxpos <= max_w)
-    valid_idx = np.where(mask)[0]
-
-    return sim_ret[valid_idx], sim_vol[valid_idx]
-
-def simulate_portfolios_cardinalidade_controlada(
+def simulate_portfolios(
     prices: pd.DataFrame,
-    tickers: list,
+    tickers: list[str],
     n_sim: int,
     min_assets: int,
     max_assets: int,
     min_w: float,
     max_w: float,
     seed: int,
-    alpha_dirichlet: float = 0.3
-):
+    alpha: float = 0.3
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list]:
+    """
+    Simula carteiras com restrições de cardinalidade e peso.
+    """
     rets = np.log(prices / prices.shift(1)).dropna()
     mu = rets.mean() * 252
     cov = rets.cov() * 252
-
     rng = np.random.default_rng(seed)
-    n_assets = len(tickers)
 
-    # Ajusta max_assets se for maior que o número de ativos disponíveis
-    max_assets = min(max_assets, n_assets)
-    min_assets = min(min_assets, max_assets)
-
-    sim_ret = []
-    sim_vol = []
-    sim_w = []
-    ativos_usados = []
+    results = []
 
     for _ in range(n_sim):
         k = rng.integers(min_assets, max_assets + 1)
-        ativos_escolhidos = rng.choice(n_assets, size=k, replace=False)
+        ativos = rng.choice(len(tickers), size=k, replace=False)
+        pesos = np.zeros(len(tickers))
+        pesos[ativos] = rng.dirichlet(alpha * np.ones(k))
 
-        pesos = np.zeros(n_assets)
-        pesos_ativos = rng.dirichlet(alpha_dirichlet * np.ones(k))
-        pesos[ativos_escolhidos] = pesos_ativos
-
-        nz = pesos > 0
-        n_nz = nz.sum()
-        # verifica cardinalidade
-        if n_nz < min_assets or n_nz > max_assets:
+        if not (min_w <= pesos[ativos].min() and pesos[ativos].max() <= max_w):
             continue
-        # pega só os pesos não-zero
-        w_nz = pesos[nz]
-        # exige piso e teto
-        if w_nz.min() < min_w or w_nz.max() > max_w:
-            continue
-
 
         ret = np.dot(mu.values, pesos)
-        vol = np.sqrt(np.dot(pesos.T, np.dot(cov.values, pesos)))
+        vol = np.sqrt(pesos.T @ cov.values @ pesos)
+        results.append((ret, vol, pesos, ativos))
 
-        sim_ret.append(ret)
-        sim_vol.append(vol)
-        sim_w.append(pesos)
-        ativos_usados.append(ativos_escolhidos)
+    if not results:
+        return np.array([]), np.array([]), np.array([]), []
 
-    return (
-        np.array(sim_ret),
-        np.array(sim_vol),
-        np.array(sim_w),
-        ativos_usados
-    )
+    ret, vol, w, ativos = zip(*results)
+    return np.array(ret), np.array(vol), np.array(w), list(ativos)
+
 
 # =======================
 # Funções de Otimização
@@ -1432,317 +1377,307 @@ def main():
         st.write("[LOG] FIIs carregados:", fii_validos)
 
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
-        progress = st.progress(0.0)
-        update_every = n_sim // 1000   # atualiza 10 vezes (a cada 10%)
-        for i in range(n_sim):
-            # faz sua simulação aqui, ex:
+                    
+        # Cria os DataFrames filtrados para as simulações
+        prices_aco  = prices_read[acoes_validos]
+        prices_fii  = prices_read[fii_validos]
+        prices_comb = prices_read[acoes_validos + fii_validos]
+
+        # Prepara dados
+        rets_aco = np.log(prices_aco / prices_aco.shift(1)).dropna()
+        mu_aco = rets_aco.mean() * 252
+        cov_aco = rets_aco.cov() * 252
+
+        rets_fii = np.log(prices_fii / prices_fii.shift(1)).dropna()
+        mu_fii = rets_fii.mean() * 252
+        cov_fii = rets_fii.cov() * 252
+
+        rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
+        mu_comb = rets_comb.mean() * 252
+        cov_comb = rets_comb.cov() * 252
+
+        if "simulacoes_realizadas" not in st.session_state:
+            st.session_state.simulacoes_realizadas = False
+
+        if not st.session_state.simulacoes_realizadas:
+            # Simulação para ações
+            st.session_state.sim_ret_aco, st.session_state.sim_vol_aco, st.session_state.sim_pesos_aco, st.session_state.ativos_aco = simulate_portfolios(
+                prices_aco,
+                acoes_validos,
+                n_sim,
+                min_assets,
+                max_assets,
+                min_w,
+                max_w,
+                seed,
+                alpha_dirichlet
+            )
+
+            # Simulação para FIIs
+            st.session_state.sim_ret_fii, st.session_state.sim_vol_fii, st.session_state.sim_pesos_fii, st.session_state.ativos_fii = simulate_portfolios(
+                prices_fii,
+                fii_validos,
+                n_sim,
+                min_assets,
+                max_assets,
+                min_w,
+                max_w,
+                seed,
+                alpha_dirichlet
+            )
+
+            # Simulação para ações + FIIs
+            st.session_state.sim_ret_comb, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, st.session_state.ativos_comb = simulate_portfolios(
+                prices_comb,
+                acoes_validos + fii_validos,
+                n_sim,
+                min_assets,
+                max_assets,
+                min_w,
+                max_w,
+                seed,
+                alpha_dirichlet
+            )
+
+            st.session_state.simulacoes_realizadas = True
+
+        # Recupera os dados simulados do session_state
+        sim_ret_aco = st.session_state.sim_ret_aco
+        sim_vol_aco = st.session_state.sim_vol_aco
+        sim_pesos_aco = st.session_state.sim_pesos_aco
+        ativos_aco = st.session_state.ativos_aco
+
+        sim_ret_fii = st.session_state.sim_ret_fii
+        sim_vol_fii = st.session_state.sim_vol_fii
+        sim_pesos_fii = st.session_state.sim_pesos_fii
+        ativos_fii = st.session_state.ativos_fii
+
+        sim_ret_comb = st.session_state.sim_ret_comb
+        sim_vol_comb = st.session_state.sim_vol_comb
+        sim_pesos_comb = st.session_state.sim_pesos_comb
+        ativos_comb = st.session_state.ativos_comb
+
+        sim_ret_aco_s  = np.exp(sim_ret_aco)  - 1
+        sim_ret_fii_s  = np.exp(sim_ret_fii)  - 1
+        sim_ret_comb_s = np.exp(sim_ret_comb) - 1
+
+        # 4) Fronteira e melhor sim – AÇÕES
+        cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
+        w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
+            sim_ret_aco_s, sim_vol_aco, sim_pesos_aco
+        )
+        sharpe_liquida_aco = (ret_sh_aco - rf) / vol_sh_aco
+
+        # 5) Fronteira e melhor sim – FIIs
+        cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
+        w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
+            sim_ret_fii_s, sim_vol_fii, sim_pesos_fii
+        )
+        sharpe_liquida_fii = (ret_sh_fii - rf) / vol_sh_fii
+
+        # 6) Fronteira e melhor sim – COMBINADO
+        cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
+        w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
+            sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
+        )
+        sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
+
+        tickers_comb = acoes_validos + fii_validos
+
+        tickers_man = normalizar_tickers(tickers_man)
+
+        # Verifica se há tickers da carteira manual que não estão em prices_comb
+        tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
+        
+        if tickers_faltando:
+            st.warning(f"Buscando dados no Yahoo Finance para: {', '.join(tickers_faltando)}")
             
-            # Cria os DataFrames filtrados para as simulações
-            prices_aco  = prices_read[acoes_validos]
-            prices_fii  = prices_read[fii_validos]
-            prices_comb = prices_read[acoes_validos + fii_validos]
+            novos_list = []
+            baixados   = []
 
-            # Prepara dados
-            rets_aco = np.log(prices_aco / prices_aco.shift(1)).dropna()
-            mu_aco = rets_aco.mean() * 252
-            cov_aco = rets_aco.cov() * 252
+            for ticker in tickers_faltando:
+                try:
+                    df_multi = yf.download(
+                        ticker,
+                        start=prices_comb.index.min(),
+                        end=prices_comb.index.max(),
+                        auto_adjust= True,
+                        group_by   = 'ticker',
+                        progress=False
+                    )
 
-            rets_fii = np.log(prices_fii / prices_fii.shift(1)).dropna()
-            mu_fii = rets_fii.mean() * 252
-            cov_fii = rets_fii.cov() * 252
-
-            rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
-            mu_comb = rets_comb.mean() * 252
-            cov_comb = rets_comb.cov() * 252
-
-            if "simulacoes_realizadas" not in st.session_state:
-                st.session_state.simulacoes_realizadas = False
-
-            if not st.session_state.simulacoes_realizadas:
-                # Simulação para ações
-                st.session_state.sim_ret_aco, st.session_state.sim_vol_aco, st.session_state.sim_pesos_aco, st.session_state.ativos_aco = simulate_portfolios_cardinalidade_controlada(
-                    prices_aco,
-                    acoes_validos,
-                    n_sim,
-                    min_assets,
-                    max_assets,
-                    min_w,
-                    max_w,
-                    seed,
-                    alpha_dirichlet
-                )
-
-                # Simulação para FIIs
-                st.session_state.sim_ret_fii, st.session_state.sim_vol_fii, st.session_state.sim_pesos_fii, st.session_state.ativos_fii = simulate_portfolios_cardinalidade_controlada(
-                    prices_fii,
-                    fii_validos,
-                    n_sim,
-                    min_assets,
-                    max_assets,
-                    min_w,
-                    max_w,
-                    seed,
-                    alpha_dirichlet
-                )
-
-                # Simulação para ações + FIIs
-                st.session_state.sim_ret_comb, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, st.session_state.ativos_comb = simulate_portfolios_cardinalidade_controlada(
-                    prices_comb,
-                    acoes_validos + fii_validos,
-                    n_sim,
-                    min_assets,
-                    max_assets,
-                    min_w,
-                    max_w,
-                    seed,
-                    alpha_dirichlet
-                )
-
-                st.session_state.simulacoes_realizadas = True
-
-            # Recupera os dados simulados do session_state
-            sim_ret_aco = st.session_state.sim_ret_aco
-            sim_vol_aco = st.session_state.sim_vol_aco
-            sim_pesos_aco = st.session_state.sim_pesos_aco
-            ativos_aco = st.session_state.ativos_aco
-
-            sim_ret_fii = st.session_state.sim_ret_fii
-            sim_vol_fii = st.session_state.sim_vol_fii
-            sim_pesos_fii = st.session_state.sim_pesos_fii
-            ativos_fii = st.session_state.ativos_fii
-
-            sim_ret_comb = st.session_state.sim_ret_comb
-            sim_vol_comb = st.session_state.sim_vol_comb
-            sim_pesos_comb = st.session_state.sim_pesos_comb
-            ativos_comb = st.session_state.ativos_comb
-
-            sim_ret_aco_s  = np.exp(sim_ret_aco)  - 1
-            sim_ret_fii_s  = np.exp(sim_ret_fii)  - 1
-            sim_ret_comb_s = np.exp(sim_ret_comb) - 1
-
-            # 4) Fronteira e melhor sim – AÇÕES
-            cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
-            w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
-                sim_ret_aco_s, sim_vol_aco, sim_pesos_aco
-            )
-            sharpe_liquida_aco = (ret_sh_aco - rf) / vol_sh_aco
-
-            # 5) Fronteira e melhor sim – FIIs
-            cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
-            w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
-                sim_ret_fii_s, sim_vol_fii, sim_pesos_fii
-            )
-            sharpe_liquida_fii = (ret_sh_fii - rf) / vol_sh_fii
-
-            # 6) Fronteira e melhor sim – COMBINADO
-            cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
-            w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
-                sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
-            )
-            sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
-
-            tickers_comb = acoes_validos + fii_validos
-
-            tickers_man = normalizar_tickers(tickers_man)
-
-            # Verifica se há tickers da carteira manual que não estão em prices_comb
-            tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
-            
-            if tickers_faltando:
-                st.warning(f"Buscando dados no Yahoo Finance para: {', '.join(tickers_faltando)}")
-                
-                novos_list = []
-                baixados   = []
-
-                for ticker in tickers_faltando:
-                    try:
-                        df_multi = yf.download(
-                            ticker,
-                            start=prices_comb.index.min(),
-                            end=prices_comb.index.max(),
-                            auto_adjust= True,
-                            group_by   = 'ticker',
-                            progress=False
-                        )
-
-                        if ticker not in df_multi.columns.levels[0]:
-                            st.error(f"Ticker {ticker} não existe no Yahoo Finance. Removido da carteira.")
-                            continue
-
-                        # 3) Extrai série de fechamento
-                        ser_close = df_multi[ticker]['Close']
-
-                        # 4) Se a série veio, mas está totalmente vazia
-                        if ser_close.empty:
-                            st.error(f"Ticker {ticker} não existe ou não tem histórico no Yahoo. Removido da carteira.")
-                            continue
-
-                        # 5) Transforma em DF de 1 coluna e acumula na lista
-                        df_close = ser_close.to_frame(name=ticker)
-                        novos_list.append(df_close)
-                        baixados.append(ticker)
-
-                    except Exception:
-                        st.error(f"Erro ao buscar {ticker}. Verifique o nome do ativo e a conexão.")
+                    if ticker not in df_multi.columns.levels[0]:
+                        st.error(f"Ticker {ticker} não existe no Yahoo Finance. Removido da carteira.")
                         continue
 
-                if novos_list:
-                    novos_dados = pd.concat(novos_list, axis=1)
-                    prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
-                    prices_comb.sort_index(inplace=True)
-                    prices_comb.columns = prices_comb.columns.map(str).str.strip()
+                    # 3) Extrai série de fechamento
+                    ser_close = df_multi[ticker]['Close']
 
-                    rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
-                    mu_comb   = rets_comb.mean() * 252
-                    cov_comb  = rets_comb.cov()  * 252
+                    # 4) Se a série veio, mas está totalmente vazia
+                    if ser_close.empty:
+                        st.error(f"Ticker {ticker} não existe ou não tem histórico no Yahoo. Removido da carteira.")
+                        continue
 
+                    # 5) Transforma em DF de 1 coluna e acumula na lista
+                    df_close = ser_close.to_frame(name=ticker)
+                    novos_list.append(df_close)
+                    baixados.append(ticker)
 
-                pares_filtrados = [
-                    (t, v) for t, v in zip(tickers_man, valores_man)
-                    if (t not in tickers_faltando) or (t in baixados)
-                ]
-                
-                tickers_man = [t.strip() for t in tickers_man]
+                except Exception:
+                    st.error(f"Erro ao buscar {ticker}. Verifique o nome do ativo e a conexão.")
+                    continue
+
+            if novos_list:
+                novos_dados = pd.concat(novos_list, axis=1)
+                prices_comb = pd.concat([prices_comb, novos_dados], axis=1)
+                prices_comb.sort_index(inplace=True)
                 prices_comb.columns = prices_comb.columns.map(str).str.strip()
-                tickers_man = [str(t).strip() for t in tickers_man]
 
-                faltantes = [t for t in tickers_man if t not in prices_comb.columns]
-                if faltantes:
-                    st.error(
-                        f"Não foi encontrado no Yahoo Finance: "
-                        f"{', '.join(faltantes)}. "
-                        "Verifique se você digitou o ticker corretamente e remova-o ou corrija."
-                    )
-                    # filtra só os que existem, mantendo os valores alinhados
-                    pares_ok = [(t, v) for t, v in zip(tickers_man, valores_man) if t in prices_comb.columns]
-                    if not pares_ok:
-                        st.error("Nenhum ticker válido sobrou na carteira manual. Reinicie e insira tickers válidos.")
-                        st.stop()
-                    tickers_man, valores_man = zip(*pares_ok)
-                    tickers_man, valores_man = list(tickers_man), list(valores_man)
+                rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
+                mu_comb   = rets_comb.mean() * 252
+                cov_comb  = rets_comb.cov()  * 252
 
 
-                # descompacta de volta (ou vazio, se não sobrou ninguém)
-                if pares_filtrados:
-                    tickers_man, valores_man = zip(*pares_filtrados)
-                    tickers_man, valores_man = list(tickers_man), list(valores_man)
-                else:
-                    st.warning("Nenhum ticker válido sobrou na carteira manual.")
-                    st.stop()
-
-            falt = [t for t in tickers_man if t not in prices_comb.columns]
-            if falt:
-                st.error(f"Não encontrei colunas para {falt}. Removido.")
-                tickers_man = [t for t in tickers_man if t in prices_comb.columns]
+            pares_filtrados = [
+                (t, v) for t, v in zip(tickers_man, valores_man)
+                if (t not in tickers_faltando) or (t in baixados)
+            ]
             
-            tickers_hibrida = []
-            w_hibrida       = np.array([])
-            ret_hibrida     = 0.0
-            vol_hibrida     = 0.0
-            sharpe_hibrida  = 0.0
-            cov_hibrida     = pd.DataFrame()
+            tickers_man = [t.strip() for t in tickers_man]
+            prices_comb.columns = prices_comb.columns.map(str).str.strip()
+            tickers_man = [str(t).strip() for t in tickers_man]
 
-            if tickers_man:
-                total_man     = sum(valores_man)
-                w_man         = np.array([v/total_man for v in valores_man])
-                tickers_hibrida = []
-                w_hibrida       = np.array([])     # array vazio por padrão
-                ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
+            faltantes = [t for t in tickers_man if t not in prices_comb.columns]
+            if faltantes:
+                st.error(
+                    f"Não foi encontrado no Yahoo Finance: "
+                    f"{', '.join(faltantes)}. "
+                    "Verifique se você digitou o ticker corretamente e remova-o ou corrija."
+                )
+                # filtra só os que existem, mantendo os valores alinhados
+                pares_ok = [(t, v) for t, v in zip(tickers_man, valores_man) if t in prices_comb.columns]
+                if not pares_ok:
+                    st.error("Nenhum ticker válido sobrou na carteira manual. Reinicie e insira tickers válidos.")
+                    st.stop()
+                tickers_man, valores_man = zip(*pares_ok)
+                tickers_man, valores_man = list(tickers_man), list(valores_man)
 
-                # Prepara DataFrame alinhado
-                prices_manual = prices_comb[tickers_man].dropna()
-                rets_manual   = np.log(prices_manual / prices_manual.shift(1)).dropna()
 
-                mu_manual  = rets_manual.mean() * 252
-                cov_manual = rets_manual.cov()  * 252
-
-                mu_vec  = mu_manual.loc[tickers_man].values
-                cov_mat = cov_manual.loc[tickers_man, tickers_man].values
-
-                try:
-                    # Carteira manual original
-                    ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
-                    vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
-                    sharpe_man = (ret_man - rf) / vol_man
-
-                    # Carteira manual otimizada
-                    w_opt_manual, sharpe_opt_manual, ok_opt, msg_opt = optimize_max_sharpe(
-                        mu_vec, cov_mat, min_w, max_w, rf)
-                    if not ok_opt:
-                        st.warning(
-                            "Não foi possível otimizar a carteira manual dentro dos limites de peso mínimo, peso máximo e número de ativos definidos. Tente relaxar algum desses parâmetros e execute novamente."
-                            #f"Motivo: {msg_opt}"
-                        )
-                        w_opt_manual = w_man
-                        sharpe_opt_manual = sharpe_man
-
-                    ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
-                    vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
-                    cov_opt_manual = cov_manual
-
-                    # Carteira Híbrida – via SLSQP, mantendo pesos mínimos manuais e teto extra  
-                    tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = \
-                        otimizar_carteira_hibrida(
-                            tickers_man,          # 1) lista de manuais
-                            valores_man,          # 2) valores correspondentes
-                            [],                   # 3) ativos_sugeridos → vazio faz a função escolher
-                            mu_comb,              # 4) pd.Series de retornos combinados
-                            cov_comb,             # 5) pd.DataFrame de covariâncias combinadas
-                            percentual_adicional, # 6) float em [0,1]
-                            rf                    # 7) taxa livre de risco
-                        )
-                    cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
-
-                except Exception as e:
-                    st.error(f"Erro ao processar carteira manual: {e}")
-                    ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
+            # descompacta de volta (ou vazio, se não sobrou ninguém)
+            if pares_filtrados:
+                tickers_man, valores_man = zip(*pares_filtrados)
+                tickers_man, valores_man = list(tickers_man), list(valores_man)
             else:
-                st.warning("Nenhum ticker válido foi inserido na carteira manual.")
+                st.warning("Nenhum ticker válido sobrou na carteira manual.")
+                st.stop()
+
+        falt = [t for t in tickers_man if t not in prices_comb.columns]
+        if falt:
+            st.error(f"Não encontrei colunas para {falt}. Removido.")
+            tickers_man = [t for t in tickers_man if t in prices_comb.columns]
+        
+        tickers_hibrida = []
+        w_hibrida       = np.array([])
+        ret_hibrida     = 0.0
+        vol_hibrida     = 0.0
+        sharpe_hibrida  = 0.0
+        cov_hibrida     = pd.DataFrame()
+
+        if tickers_man:
+            total_man     = sum(valores_man)
+            w_man         = np.array([v/total_man for v in valores_man])
+            tickers_hibrida = []
+            w_hibrida       = np.array([])     # array vazio por padrão
+            ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
+
+            # Prepara DataFrame alinhado
+            prices_manual = prices_comb[tickers_man].dropna()
+            rets_manual   = np.log(prices_manual / prices_manual.shift(1)).dropna()
+
+            mu_manual  = rets_manual.mean() * 252
+            cov_manual = rets_manual.cov()  * 252
+
+            mu_vec  = mu_manual.loc[tickers_man].values
+            cov_mat = cov_manual.loc[tickers_man, tickers_man].values
+
+            try:
+                # Carteira manual original
+                ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
+                vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
+                sharpe_man = (ret_man - rf) / vol_man
+
+                # Carteira manual otimizada
+                w_opt_manual, sharpe_opt_manual, ok_opt, msg_opt = optimize_max_sharpe(
+                    mu_vec, cov_mat, min_w, max_w, rf)
+                if not ok_opt:
+                    st.warning(
+                        "Não foi possível otimizar a carteira manual dentro dos limites de peso mínimo, peso máximo e número de ativos definidos. Tente relaxar algum desses parâmetros e execute novamente."
+                        #f"Motivo: {msg_opt}"
+                    )
+                    w_opt_manual = w_man
+                    sharpe_opt_manual = sharpe_man
+
+                ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
+                vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
+                cov_opt_manual = cov_manual
+
+                # Carteira Híbrida – via SLSQP, mantendo pesos mínimos manuais e teto extra  
+                tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = \
+                    otimizar_carteira_hibrida(
+                        tickers_man,          # 1) lista de manuais
+                        valores_man,          # 2) valores correspondentes
+                        [],                   # 3) ativos_sugeridos → vazio faz a função escolher
+                        mu_comb,              # 4) pd.Series de retornos combinados
+                        cov_comb,             # 5) pd.DataFrame de covariâncias combinadas
+                        percentual_adicional, # 6) float em [0,1]
+                        rf                    # 7) taxa livre de risco
+                    )
+                cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
+
+            except Exception as e:
+                st.error(f"Erro ao processar carteira manual: {e}")
                 ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
+        else:
+            st.warning("Nenhum ticker válido foi inserido na carteira manual.")
+            ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
 
-            # 12) Estatísticas individuais por ticker
-            stats = []
+        # 12) Estatísticas individuais por ticker
+        stats = []
 
-            # Para ações: usa mu_aco e cov_aco
-            for t in acoes_validos:
-                mu   = mu_aco[t]
-                vol  = np.sqrt(cov_aco.loc[t, t])
-                sharpe = (mu - rf) / vol
-                stats.append({
-                    "Ticker": t.replace(".SA", ""),
-                    "Ativo":  "Ação",
-                    "Sharpe": sharpe,
-                    "Retorno": mu,
-                    "Volatilidade": vol
-                })
+        # Para ações: usa mu_aco e cov_aco
+        for t in acoes_validos:
+            mu   = mu_aco[t]
+            vol  = np.sqrt(cov_aco.loc[t, t])
+            sharpe = (mu - rf) / vol
+            stats.append({
+                "Ticker": t.replace(".SA", ""),
+                "Ativo":  "Ação",
+                "Sharpe": sharpe,
+                "Retorno": mu,
+                "Volatilidade": vol
+            })
 
-            # Para FIIs: usa mu_fii e cov_fii
-            for t in fii_validos:
-                mu   = mu_fii[t]
-                vol  = np.sqrt(cov_fii.loc[t, t])
-                sharpe = (mu - rf) / vol
-                stats.append({
-                    "Ticker": t.replace(".SA", ""),
-                    "Ativo":  "FII",
-                    "Sharpe": sharpe,
-                    "Retorno": mu,
-                    "Volatilidade": vol
-                })
+        # Para FIIs: usa mu_fii e cov_fii
+        for t in fii_validos:
+            mu   = mu_fii[t]
+            vol  = np.sqrt(cov_fii.loc[t, t])
+            sharpe = (mu - rf) / vol
+            stats.append({
+                "Ticker": t.replace(".SA", ""),
+                "Ativo":  "FII",
+                "Sharpe": sharpe,
+                "Retorno": mu,
+                "Volatilidade": vol
+            })
 
-            # Converte em DataFrame e ordena
-            df_stats = pd.DataFrame(stats) \
-                .sort_values("Sharpe", ascending=False) \
-                .reset_index(drop=True)         # <-- aí o índice vira 0,1,2,…
+        # Converte em DataFrame e ordena
+        df_stats = pd.DataFrame(stats) \
+            .sort_values("Sharpe", ascending=False) \
+            .reset_index(drop=True)         # <-- aí o índice vira 0,1,2,…
 
-            df_stats.index.name = "Rank"       # opcional: dá um nome à coluna de índice
-            df_stats.index += 1
-
-            # só renderiza a barra a cada bloco
-            if (i + 1) % update_every == 0 or i == n_sim-1:
-                progress.progress((i + 1) / n_sim)
-                
-        progress.empty()
+        df_stats.index.name = "Rank"       # opcional: dá um nome à coluna de índice
+        df_stats.index += 1
 
         # Plotagem
         plot_results(
