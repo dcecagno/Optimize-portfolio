@@ -13,29 +13,31 @@ import streamlit as st
 # =======================
 
 def _read_close_prices(path_csv: str) -> pd.DataFrame:
-    df = pd.read_csv(path_csv, index_col=0, parse_dates=True)
+    """
+    Lê CSV com cabeçalho em duas linhas (ticker / Price,Open,…)
+    e pula a terceira linha que só traz 'Date' e vírgulas.
+    Retorna só o Close.
+    """
+    try:
+        df = pd.read_csv(
+            path_csv,
+            header=[0,1],
+            skiprows=[2],        # ignora a linha “Date,,,,”
+            index_col=0,
+            parse_dates=True
+        )
+        # se há nível 1 chamado 'Close', retorna só esse slice
+        if 'Close' in df.columns.get_level_values(1):
+            return df.xs('Close', level=1, axis=1).copy()
+    except Exception:
+        pass
 
-    # Se for MultiIndex (vindo de um CSV bruto do yf.download), extrai 'Close'
-    if isinstance(df.columns, pd.MultiIndex):
-        try:
-            df = df.xs('Close', axis=1, level=1)
-        except KeyError:
-            raise RuntimeError(
-                f"Nenhuma coluna 'Close' em nível 1 do MultiIndex em {path_csv}. "
-                f"Colunas encontradas: {list(df.columns)}"
-            )
-
-    # Se NON-MultiIndex e sem coluna 'Close', retorna tudo como preço de fechamento
-    elif 'Close' not in df.columns:
-        # printa colunas para debug, se quiser
-        print(f"[INFO] Sem coluna 'Close'; usando todas as colunas como preços em {path_csv}")
-        # nada a fazer: df já tem colunas = tickers
-
-    else:
-        # tem 'Close', então filtra só ela
-        df = df[['Close']]
-
-    return df
+    # fallback para CSV sem multiindex
+    df2 = pd.read_csv(path_csv, index_col=0, parse_dates=True)
+    close_cols = [c for c in df2.columns if 'Close' in c]
+    if not close_cols:
+        raise RuntimeError(f"Nenhuma coluna 'Close' em {path_csv}")
+    return df2[close_cols].copy()
 
 
 def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 200):
