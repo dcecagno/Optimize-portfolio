@@ -352,7 +352,8 @@ def plot_results(
     vol_sh_comb, ret_sh_comb,
     vol_man,     ret_man,
     vol_opt_manual, ret_opt_manual,
-    vol_hibrida, ret_hibrida
+    vol_hibrida, ret_hibrida,
+    tickers_man
 ):
     
     plt.figure(figsize=(12,8))
@@ -374,9 +375,22 @@ def plot_results(
 
 
     # Carteiras manuais
-    plt.scatter(vol_man, ret_man, c="black", s=80, marker="X", label="Carteira Manual")
-    plt.scatter(vol_opt_manual, ret_opt_manual, c="orange", s=80, marker="D", label="Manual Otimizada")
-    plt.scatter(vol_hibrida, ret_hibrida, c="purple", s=80, marker="P", label="Carteira Manual com Inclusão")
+    if tickers_man:
+        plt.scatter(
+            vol_man, ret_man,
+            c="black", s=80, marker="X",
+            label="Carteira Manual"
+        )
+        plt.scatter(
+            vol_opt_manual, ret_opt_manual,
+            c="orange", s=80, marker="D",
+            label="Manual Otimizada"
+        )
+        plt.scatter(
+            vol_hibrida, ret_hibrida,
+            c="purple", s=80, marker="P",
+            label="Carteira Manual com Inclusão"
+        )
 
     plt.xlabel("Volatilidade Anualizada")
     plt.ylabel("Retorno Anualizado")
