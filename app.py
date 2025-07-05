@@ -26,17 +26,29 @@ def _read_close_prices(path_csv: str) -> pd.DataFrame:
             index_col=0,
             parse_dates=True
         )
-        # se há nível 1 chamado 'Close', retorna só esse slice
-        if 'Close' in df.columns.get_level_values(1):
+        lvl1 = df.columns.get_level_values(1)
+
+        # 1) Se existe 'Adj Close', retorna só esse slice
+        if 'Adj Close' in lvl1:
+            return df.xs('Adj Close', level=1, axis=1).copy()
+
+        # 2) Senão, se existe 'Close', retorna só esse slice
+        if 'Close' in lvl1:
             return df.xs('Close', level=1, axis=1).copy()
     except Exception:
         pass
 
     # fallback para CSV sem multiindex
     df2 = pd.read_csv(path_csv, index_col=0, parse_dates=True)
-    close_cols = [c for c in df2.columns if 'Close' in c]
+
+    close_cols = [c for c in df2.columns if 'Adj Close' in c]
     if not close_cols:
-        raise RuntimeError(f"Nenhuma coluna 'Close' em {path_csv}")
+        # senão tenta qualquer coluna que contenha 'Close'
+        close_cols = [c for c in df2.columns if 'Close' in c]
+
+    if not close_cols:
+        raise RuntimeError(f"Nenhuma coluna 'Adj Close' ou 'Close' em {path_csv}")
+
     return df2[close_cols].copy()
 
 
@@ -1461,7 +1473,7 @@ def main():
                         ticker,
                         start=prices_comb.index.min(),
                         end=prices_comb.index.max(),
-                        auto_adjust= True,
+                        auto_adjust= False,
                         group_by   = 'ticker',
                         progress=False
                     )
@@ -1471,7 +1483,10 @@ def main():
                         continue
 
                     # 3) Extrai série de fechamento
-                    ser_close = df_multi[ticker]['Close']
+                    if 'Adj Close' in df_multi[ticker].columns:
+                        ser_close = df_multi[ticker]['Adj Close']
+                    else:
+                        ser_close = df_multi[ticker]['Close']
 
                     # 4) Se a série veio, mas está totalmente vazia
                     if ser_close.empty:
