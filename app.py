@@ -1696,6 +1696,17 @@ def main():
                 vol=v,
                 min_weight=0.001
             )
+            if nome == "Carteira de Sharpe Máximo – AÇÕES E FIIs":
+                # acha índices de ações e FIIs na carteira combinada
+                idx_acoes = [ticks.index(t) for t in acoes_validos if t in ticks]
+                idx_fii   = [ticks.index(t) for t in fii_validos   if t in ticks]
+
+                pct_acoes = w[idx_acoes].sum()
+                pct_fii   = w[idx_fii].sum()
+
+                st.markdown("**Composição por classe (Máx. Sharpe – Comb.):**")
+                st.markdown(f"- Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
+
             st.divider()
 
                 # Exibe no Streamlit
