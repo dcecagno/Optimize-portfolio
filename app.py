@@ -360,17 +360,17 @@ def plot_results(
     # Monte Carlo e Fronteiras
     plt.scatter(sim_vol_comb, sim_ret_comb_s, s=8, alpha=0.12, c='red')
     plt.plot(vol_lin_comb, ret_lin_comb, '--', c='red', lw=2)
-    plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, label='Sharpe Max – Combinado')
+    plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, label='Sharpe Max – Ações + FII')
 
 
-    plt.scatter(sim_vol_aco, sim_ret_aco_s, s=8, alpha=0.12, c='blue', label='MC – Ações')
-    plt.plot(vol_lin_aco, ret_lin_aco, '--', c='blue', lw=2, label='FE (MC) – Ações')
+    plt.scatter(sim_vol_aco, sim_ret_aco_s, s=8, alpha=0.12, c='blue')
+    plt.plot(vol_lin_aco, ret_lin_aco, '--', c='blue', lw=2)
     plt.scatter(vol_sh_aco, ret_sh_aco, marker='*', c='blue', s=180, label='Sharpe Max – Ações')
 
 
-    plt.scatter(sim_vol_fii, sim_ret_fii_s, s=8, alpha=0.12, c='green', label='MC – FIIs')
-    plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2, label='FE (MC) – FIIs')
-    plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, label='Sharpe Max – FIIs')
+    plt.scatter(sim_vol_fii, sim_ret_fii_s, s=8, alpha=0.12, c='green')
+    plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2)
+    plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, label='Sharpe Max – FII')
 
 
     # Carteiras manuais
@@ -1612,7 +1612,6 @@ def main():
                 if not ok_opt:
                     st.warning(
                         "Não foi possível otimizar a carteira manual dentro dos limites de peso mínimo, peso máximo e número de ativos definidos. Tente relaxar algum desses parâmetros e execute novamente."
-                        #f"Motivo: {msg_opt}"
                     )
                     w_opt_manual = w_man
                     sharpe_opt_manual = sharpe_man
@@ -1688,13 +1687,25 @@ def main():
         )
 
         cenarios = [
-            ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_liquida_aco, ret_sh_aco, vol_sh_aco),
-            ("Carteira de Sharpe Máximo – FIIs", w_sharpe_fii, fii_validos,  cov_fii, sharpe_liquida_fii, ret_sh_fii, vol_sh_fii),
-            ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_liquida_comb, ret_sh_comb, vol_sh_comb),
-            ("Carteira Manual", w_man, tickers_man, cov_manual, sharpe_man, ret_man, vol_man),
-            ("Carteira Manual Otimizada", w_opt_manual, tickers_man, cov_opt_manual, sharpe_opt_manual, ret_opt_manual, vol_opt_manual),
-            (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)", w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida),
-        ]
+        ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_liquida_aco, ret_sh_aco, vol_sh_aco),
+        ("Carteira de Sharpe Máximo – FIIs",  w_sharpe_fii,  fii_validos,  cov_fii,  sharpe_liquida_fii,  ret_sh_fii,  vol_sh_fii),
+        ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_liquida_comb, ret_sh_comb, vol_sh_comb),
+    ]
+
+        # Só adiciona o(s) cenário(s) manual(aux) se houver tickers válidos
+        if tickers_man:
+            cenarios.append(
+                ("Carteira Manual", w_man, tickers_man, cov_manual, sharpe_man, ret_man, vol_man)
+            )
+            cenarios.append(
+                ("Carteira Manual Otimizada", w_opt_manual, tickers_man, cov_opt_manual, sharpe_opt_manual, ret_opt_manual, vol_opt_manual)
+            )
+            cenarios.append(
+                (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)",
+                w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida)
+            )
+        else:
+            st.info("Nenhum ticker válido na Carteira Manual → pulando cenário manual.")
 
         st.divider()
 
