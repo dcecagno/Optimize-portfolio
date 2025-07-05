@@ -398,8 +398,8 @@ def plot_results(
     plt.legend()
     plt.grid(True)
     ax = plt.gca()
-    ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0))
-    ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
+    ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0, decimals=0))
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0, decimals=0))
     
     max_vol = max(sim_vol_aco.max(), sim_vol_fii.max(), sim_vol_comb.max())
     ax.set_xlim(0, max_vol * 1.15)
