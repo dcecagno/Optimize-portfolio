@@ -12,7 +12,7 @@ import streamlit as st
 # Funções Auxiliares
 # =======================
 
-def read_close_prices(path_csv: str) -> pd.DataFrame:
+def _read_close_prices(path_csv: str) -> pd.DataFrame:
     """
     Lê CSV com cabeçalho em duas linhas (ticker / Price,Open,…)
     e pula a terceira linha que só traz 'Date' e vírgulas.
@@ -478,7 +478,7 @@ def main():
     st.title("Simulação de Carteiras Eficientes")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
-    prices_read = read_close_prices(url)
+    prices_read = _read_close_prices(url)
 
     # Dicionários de classificação
     SECTOR_MAP_ACOES = {
