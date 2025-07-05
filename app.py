@@ -1393,10 +1393,8 @@ def main():
             st.write(acoes_validos)
 
         with col2:
-            st.subheader("FIIs carregados")
-            st.code(fii_validos)
-
-        st.write("[LOG] FIIs carregados:", fii_validos)
+            st.write("✅ **FIIs carregados:**")
+            st.write(fii_validos)
 
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
                     
