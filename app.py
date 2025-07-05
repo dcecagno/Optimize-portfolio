@@ -358,8 +358,8 @@ def plot_results(
     plt.figure(figsize=(12,8))
 
     # Monte Carlo e Fronteiras
-    plt.scatter(sim_vol_comb, sim_ret_comb_s, s=8, alpha=0.12, c='red', label='MC – Combinado')
-    plt.plot(vol_lin_comb, ret_lin_comb, '--', c='red', lw=2, label='FE (MC) – Combinado')
+    plt.scatter(sim_vol_comb, sim_ret_comb_s, s=8, alpha=0.12, c='red')
+    plt.plot(vol_lin_comb, ret_lin_comb, '--', c='red', lw=2)
     plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, label='Sharpe Max – Combinado')
 
 
