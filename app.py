@@ -13,33 +13,32 @@ import streamlit as st
 # =======================
 
 def _read_close_prices(path_csv: str) -> pd.DataFrame:
-    """
-    Lê CSV com cabeçalho em duas linhas (ticker / Price,Open,…)
-    e pula a terceira linha que só traz 'Date' e vírgulas.
-    Retorna só o Close.
-    """
-    try:
-        df = pd.read_csv(
-            path_csv,
-            header=[0,1],
-            skiprows=[2],        # ignora a linha “Date,,,,”
-            index_col=0,
-            parse_dates=True
-        )
-        # se há nível 1 chamado 'Close', retorna só esse slice
-        if 'Close' in df.columns.get_level_values(1):
-            return df.xs('Close', level=1, axis=1).copy()
-    except Exception:
-        pass
+    df = pd.read_csv(path_csv, index_col=0, parse_dates=True)
 
-    # fallback para CSV sem multiindex
-    df2 = pd.read_csv(path_csv, index_col=0, parse_dates=True)
-    close_cols = [c for c in df2.columns if 'Close' in c]
-    if not close_cols:
-        raise RuntimeError(f"Nenhuma coluna 'Close' em {path_csv}")
-    return df2[close_cols].copy()
+    # Se for MultiIndex (vindo de um CSV bruto do yf.download), extrai 'Close'
+    if isinstance(df.columns, pd.MultiIndex):
+        try:
+            df = df.xs('Close', axis=1, level=1)
+        except KeyError:
+            raise RuntimeError(
+                f"Nenhuma coluna 'Close' em nível 1 do MultiIndex em {path_csv}. "
+                f"Colunas encontradas: {list(df.columns)}"
+            )
 
-def filtrar_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 200):
+    # Se NON-MultiIndex e sem coluna 'Close', retorna tudo como preço de fechamento
+    elif 'Close' not in df.columns:
+        # printa colunas para debug, se quiser
+        print(f"[INFO] Sem coluna 'Close'; usando todas as colunas como preços em {path_csv}")
+        # nada a fazer: df já tem colunas = tickers
+
+    else:
+        # tem 'Close', então filtra só ela
+        df = df[['Close']]
+
+    return df
+
+
+def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 200):
     """
     Retorna duas listas: tickers válidos (com pelo menos min_obs observações válidas)
     e tickers problemáticos (que não atendem a esse critério).
@@ -58,27 +57,6 @@ def filtrar_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 200):
             st.write(f"[INFO] {t} não encontrado no DataFrame.")
             tickers_problema.append(t)
     return tickers_validos, tickers_problema
-
-def filtrar_fronteira_eficiente(vols, rets):
-    """
-    Remove pontos ineficientes da fronteira: mantém apenas os com retorno máximo
-    para cada nível crescente de volatilidade.
-    """
-    idx_sort = np.argsort(vols)
-    vols_sorted = vols[idx_sort]
-    rets_sorted = rets[idx_sort]
-
-    efficient_vols = []
-    efficient_rets = []
-    current_max = -np.inf
-
-    for v, r in zip(vols_sorted, rets_sorted):
-        if r > current_max:
-            efficient_vols.append(v)
-            efficient_rets.append(r)
-            current_max = r
-
-    return np.array(efficient_vols), np.array(efficient_rets)
 
 # =======================
 # Funções de Simulação
@@ -124,7 +102,6 @@ def simulate_portfolios(
     ret, vol, w, ativos = zip(*results)
     return np.array(ret), np.array(vol), np.array(w), list(ativos)
 
-
 # =======================
 # Funções de Otimização
 # =======================
@@ -153,35 +130,6 @@ def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0, rf=0.0):
     msg     = res.message
 
     return w_opt, sharpe, success, msg
-
-def portfolio_return(w, mu):
-    return np.dot(mu, w)
-
-def portfolio_volatility(w, cov):
-    return np.sqrt(np.dot(w.T, np.dot(cov, w)))
-
-def minimize_volatility_for_target(mu, cov, target, bounds=None):
-    n = len(mu)
-    init = np.repeat(1/n, n)
-    bounds = bounds or [(0, 1)] * n
-    cons = (
-        {'type': 'eq', 'fun': lambda w: np.sum(w) - 1},
-        {'type': 'eq', 'fun': lambda w: portfolio_return(w, mu) - target}
-    )
-    res = minimize(portfolio_volatility, init, args=(cov,), method='SLSQP', bounds=bounds, constraints=cons)
-    return res.x, portfolio_volatility(res.x, cov)
-
-def compute_efficient_frontier(mu, cov, n_points=50):
-    targets = np.linspace(min(mu), max(mu), n_points)
-    vols, rets = [], []
-    for t in targets:
-        try:
-            w, vol = minimize_volatility_for_target(mu, cov, t)
-            vols.append(vol)
-            rets.append(t)
-        except:
-            continue
-    return np.array(vols), np.array(rets)
 
 def rebalance_weights(weights, min_w=0.03):
     """
@@ -292,19 +240,6 @@ def otimizar_carteira_hibrida(tickers_man: list,
 
     return list(tickers_hibrida), np.array(w_hibrida), ret_h, vol_h, sharpe_h
 
-# 1) Extrai fronteira Pareto dos pontos simulados
-def pareto_front(vols: np.ndarray, rets: np.ndarray):
-    idx = np.argsort(vols)
-    vols, rets = vols[idx], rets[idx]
-    mask = np.zeros_like(vols, dtype=bool)
-    current_max = -np.inf
-    for i, (v, r) in enumerate(zip(vols, rets)):
-        if r > current_max:
-            mask[i] = True
-            current_max = r
-    return vols[mask], rets[mask]
-
-# 2) Encontra a simulação de máximo Sharpe entre as válidas
 def pick_best_sim(
         sim_ret: np.ndarray, 
         sim_vol: np.ndarray, 
@@ -1380,8 +1315,8 @@ def main():
             st.write(nao_localizados)
 
         # Filtra os tickers com base em um mínimo desejado de observações (por exemplo, 200)
-        acoes_validos, acoes_problema = filtrar_tickers(prices_read, acoes, min_obs=200)
-        fii_validos, fii_problema     = filtrar_tickers(prices_read, fii, min_obs=200)
+        acoes_validos, acoes_problema = filtrar_valid_tickers(prices_read, acoes, min_obs=200)
+        fii_validos, fii_problema     = filtrar_valid_tickers(prices_read, fii, min_obs=200)
 
         acoes_validos.sort()
         fii_validos.sort()
