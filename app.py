@@ -539,7 +539,7 @@ def render_portfolio_section(
 # =======================
 
 def main():
-    st.title("Simulação de Carteiras e Fronteira Eficiente: v48")
+    st.title("Simulação de Carteiras Eficientes")
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
@@ -1335,7 +1335,7 @@ def main():
     # Normaliza os tickers para garantir o formato correto (ex: PETR3 → PETR3.SA)
     tickers_man = normalizar_tickers(tickers_man)
 
-    st.subheader("Carteira Otimizada")
+    st.subheader("Carteira Otimizada (opcional)")
     percentual_adicional = st.slider(
                     "Percentual adicional para otimização da carteira híbrida (%)",
                     min_value=0,
