@@ -1304,7 +1304,7 @@ def main():
     rf = (1 + rf_percent) ** anos - 1
 
     # Carteira manual
-    st.subheader("Carteira Manual")
+    st.subheader("Carteira Manual (opcional)")
     
     # Entrada da carteira manual em valores monetários
     num_ativos = st.number_input("Número de ativos na carteira manual", min_value=1, max_value=20, value=4)
@@ -1386,15 +1386,18 @@ def main():
         acoes_validos.sort()
         fii_validos.sort()
 
+        acoes_display = [t.removesuffix(".SA") for t in acoes_validos]
+        fii_display = [t.removesuffix(".SA") for t in fii_validos]
+
         col1, col2 = st.columns(2)
 
         with col1:
             st.write("✅ **Ações carregadas:**")
-            st.write(acoes_validos)
+            st.write(acoes_display)
 
         with col2:
             st.write("✅ **FIIs carregados:**")
-            st.write(fii_validos)
+            st.write(fii_display)
 
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
                     
