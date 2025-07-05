@@ -1697,7 +1697,8 @@ def main():
             sim_vol_aco, sim_ret_aco_s, cf_vol_aco, cf_ret_aco, vol_sh_aco, ret_sh_aco,
             sim_vol_fii, sim_ret_fii_s, cf_vol_fii, cf_ret_fii, vol_sh_fii, ret_sh_fii,
             sim_vol_comb, sim_ret_comb_s, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
-            vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida
+            vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida,
+            tickers_man
         )
 
         cenarios = [
