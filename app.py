@@ -51,7 +51,6 @@ def _read_close_prices(path_csv: str) -> pd.DataFrame:
 
     return df2[close_cols].copy()
 
-
 def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 200):
     """
     Retorna duas listas: tickers válidos (com pelo menos min_obs observações válidas)
@@ -90,7 +89,7 @@ def simulate_portfolios(
     """
     Simula carteiras com restrições de cardinalidade e peso.
     """
-    rets = np.log(prices / prices.shift(1)).dropna()
+    rets = prices.pct_change().dropna()
     mu = rets.mean() * 252
     cov = rets.cov() * 252
     rng = np.random.default_rng(seed)
@@ -1356,15 +1355,15 @@ def main():
         prices_comb = prices_read[acoes_validos + fii_validos]
 
         # Prepara dados
-        rets_aco = np.log(prices_aco / prices_aco.shift(1)).dropna()
+        rets_aco = prices_aco.pct_change().dropna()
         mu_aco = rets_aco.mean() * 252
         cov_aco = rets_aco.cov() * 252
 
-        rets_fii = np.log(prices_fii / prices_fii.shift(1)).dropna()
+        rets_fii = prices_fii.pct_change().dropna()
         mu_fii = rets_fii.mean() * 252
         cov_fii = rets_fii.cov() * 252
 
-        rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
+        rets_comb = prices_comb.pct_change().dropna()
         mu_comb = rets_comb.mean() * 252
         cov_comb = rets_comb.cov() * 252
 
@@ -1508,7 +1507,7 @@ def main():
                 prices_comb.sort_index(inplace=True)
                 prices_comb.columns = prices_comb.columns.map(str).str.strip()
 
-                rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
+                rets_comb = prices_comb.pct_change().dropna()
                 mu_comb   = rets_comb.mean() * 252
                 cov_comb  = rets_comb.cov()  * 252
 
@@ -1567,7 +1566,7 @@ def main():
 
             # Prepara DataFrame alinhado
             prices_manual = prices_comb[tickers_man].dropna()
-            rets_manual   = np.log(prices_manual / prices_manual.shift(1)).dropna()
+            rets_manual   = prices_manual.pct_change().dropna()
 
             mu_manual  = rets_manual.mean() * 252
             cov_manual = rets_manual.cov()  * 252
