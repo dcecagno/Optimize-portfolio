@@ -1386,7 +1386,15 @@ def main():
         acoes_validos.sort()
         fii_validos.sort()
 
-        st.write("[LOG] Ações carregadas:", acoes_validos)
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write("✅ **Ações carregadas:**")
+            st.write(acoes_validos)
+
+        with col2:
+            st.subheader("FIIs carregados")
+            st.code(fii_validos)
 
         st.write("[LOG] FIIs carregados:", fii_validos)
 
