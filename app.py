@@ -1466,7 +1466,7 @@ def main():
                         ticker,
                         start=prices_comb.index.min(),
                         end=prices_comb.index.max(),
-                        auto_adjust= False,
+                        auto_adjust= True,
                         group_by   = 'ticker',
                         progress=False
                     )
