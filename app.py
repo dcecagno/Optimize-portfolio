@@ -385,12 +385,20 @@ def plot_results(
     ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0, decimals=0))
     ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0, decimals=0))
     
-    max_vol = max(sim_vol_aco.max(), sim_vol_fii.max(), sim_vol_comb.max())
-    ax.set_xlim(0, max_vol * 1.15)
+    # Protege contra arrays vazios
+    vols = [arr.max() for arr in [sim_vol_aco, sim_vol_fii, sim_vol_comb] if arr.size > 0]
+    rets_max = [arr.max() for arr in [sim_ret_aco_s, sim_ret_fii_s, sim_ret_comb_s] if arr.size > 0]
+    rets_min = [arr.min() for arr in [sim_ret_aco_s, sim_ret_fii_s, sim_ret_comb_s] if arr.size > 0]
 
-    max_ret = max(sim_ret_aco_s.max(), sim_ret_fii_s.max(), sim_ret_comb_s.max())
-    min_ret = min(sim_ret_aco_s.min(), sim_ret_fii_s.min(), sim_ret_comb_s.min())
-    ax.set_ylim(min_ret * 1.15, max_ret * 1.3)
+    if vols and rets_max and rets_min:
+        max_vol = max(vols)
+        max_ret = max(rets_max)
+        min_ret = min(rets_min)
+
+        ax.set_xlim(0, max_vol * 1.15)
+        ax.set_ylim(min_ret * 1.15, max_ret * 1.3)
+    else:
+        st.warning("Não foi possível calcular os limites do gráfico. Verifique os parâmetros de simulação.")
 
     st.pyplot(plt)
 
