@@ -79,9 +79,10 @@ def simulate_portfolios(
     max_w: float,
     seed: int,
     alpha: float = 0.3
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[list[str]]]:
     """
     Simula carteiras com restrições de cardinalidade e peso.
+    Agora também retorna os tickers sorteados em cada simulação.
     """
     rets = prices.pct_change().dropna()
     mu = rets.mean() * 252
@@ -92,22 +93,51 @@ def simulate_portfolios(
 
     for _ in range(n_sim):
         k = rng.integers(min_assets, max_assets + 1)
-        ativos = rng.choice(len(tickers), size=k, replace=False)
+        ativos_idx = rng.choice(len(tickers), size=k, replace=False)
         pesos = np.zeros(len(tickers))
-        pesos[ativos] = rng.dirichlet(alpha * np.ones(k))
+        pesos[ativos_idx] = rng.dirichlet(alpha * np.ones(k))
 
-        if not (min_w <= pesos[ativos].min() and pesos[ativos].max() <= max_w):
+        if not (min_w <= pesos[ativos_idx].min() and pesos[ativos_idx].max() <= max_w):
             continue
 
         ret = np.dot(mu.values, pesos)
         vol = np.sqrt(pesos.T @ cov.values @ pesos)
-        results.append((ret, vol, pesos, ativos))
+        ativos_tickers = [tickers[i] for i in ativos_idx]
+        results.append((ret, vol, pesos, ativos_tickers))
 
     if not results:
         return np.array([]), np.array([]), np.array([]), []
 
-    ret, vol, w, ativos = zip(*results)
-    return np.array(ret), np.array(vol), np.array(w), list(ativos)
+    ret, vol, w, ativos_tickers = zip(*results)
+    return np.array(ret), np.array(vol), np.array(w), list(ativos_tickers)
+
+def filtrar_por_composicao(ativos_simulados: list[list[str]], acoes: set, fiis: set):
+    """
+    Classifica as carteiras simuladas em:
+    - só ações
+    - só FIIs
+    - mistas
+    """
+    so_acoes = []
+    so_fiis = []
+    mistos = []
+
+    for i, ativos in enumerate(ativos_simulados):
+        ativos_set = set(ativos)
+        contem_acao = any(a in acoes for a in ativos_set)
+        contem_fii = any(f in fiis for f in ativos_set)
+
+        if contem_acao and not contem_fii:
+            so_acoes.append(i)
+        elif contem_fii and not contem_acao:
+            so_fiis.append(i)
+        elif contem_acao and contem_fii:
+            mistos.append(i)
+
+    return so_acoes, so_fiis, mistos
+
+def filtrar_por_indices(arr, indices):
+    return arr[indices] if len(indices) > 0 else np.array([])
 
 # =======================
 # Funções de Otimização
@@ -1367,32 +1397,6 @@ def main():
 
         if not st.session_state.simulacoes_realizadas:
             # Simulação para ações
-            st.session_state.sim_ret_aco, st.session_state.sim_vol_aco, st.session_state.sim_pesos_aco, st.session_state.ativos_aco = simulate_portfolios(
-                prices_aco,
-                acoes_validos,
-                n_sim,
-                min_assets,
-                max_assets,
-                min_w,
-                max_w,
-                seed,
-                alpha_dirichlet
-            )
-
-            # Simulação para FIIs
-            st.session_state.sim_ret_fii, st.session_state.sim_vol_fii, st.session_state.sim_pesos_fii, st.session_state.ativos_fii = simulate_portfolios(
-                prices_fii,
-                fii_validos,
-                n_sim,
-                min_assets,
-                max_assets,
-                min_w,
-                max_w,
-                seed,
-                alpha_dirichlet
-            )
-
-            # Simulação para ações + FIIs
             st.session_state.sim_ret_comb, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, st.session_state.ativos_comb = simulate_portfolios(
                 prices_comb,
                 acoes_validos + fii_validos,
@@ -1405,45 +1409,71 @@ def main():
                 alpha_dirichlet
             )
 
+            # Conjuntos para classificação
+            set_acoes = set(acoes_validos)
+            set_fiis = set(fii_validos)
+
+            idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
+                st.session_state.ativos_comb, set_acoes, set_fiis
+            )
+
+
+
             st.session_state.simulacoes_realizadas = True
 
+
+        
         # Recupera os dados simulados do session_state
-        sim_ret_aco = st.session_state.sim_ret_aco
-        sim_vol_aco = st.session_state.sim_vol_aco
-        sim_pesos_aco = st.session_state.sim_pesos_aco
-        ativos_aco = st.session_state.ativos_aco
+        sim_ret_aco = filtrar_por_indices(st.session_state.sim_ret_comb, idx_aco)
+        sim_vol_aco = filtrar_por_indices(st.session_state.sim_vol_comb, idx_aco)
+        sim_pesos_aco = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_aco)
 
-        sim_ret_fii = st.session_state.sim_ret_fii
-        sim_vol_fii = st.session_state.sim_vol_fii
-        sim_pesos_fii = st.session_state.sim_pesos_fii
-        ativos_fii = st.session_state.ativos_fii
+        sim_ret_fii = filtrar_por_indices(st.session_state.sim_ret_comb, idx_fii)
+        sim_vol_fii = filtrar_por_indices(st.session_state.sim_vol_comb, idx_fii)
+        sim_pesos_fii = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_fii)
 
-        sim_ret_comb = st.session_state.sim_ret_comb
-        sim_vol_comb = st.session_state.sim_vol_comb
-        sim_pesos_comb = st.session_state.sim_pesos_comb
-        ativos_comb = st.session_state.ativos_comb
+        sim_ret_misto = filtrar_por_indices(st.session_state.sim_ret_comb, idx_misto)
+        sim_vol_misto = filtrar_por_indices(st.session_state.sim_vol_comb, idx_misto)
+        sim_pesos_misto = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_misto)
 
-        sim_ret_aco_s  = np.exp(sim_ret_aco)  - 1
-        sim_ret_fii_s  = np.exp(sim_ret_fii)  - 1
-        sim_ret_comb_s = np.exp(sim_ret_comb) - 1
+        if len(sim_vol_aco) > 0:
+            sim_ret_aco_s = np.exp(sim_ret_aco) - 1
+            cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
+            w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = pick_best_sim(
+                sim_ret_aco_s, sim_vol_aco, sim_pesos_aco, rf
+            )
+        else:
+            sim_ret_aco_s = np.array([])
+            cf_vol_aco = cf_ret_aco = np.array([])
+            w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
 
-        # 4) Fronteira e melhor sim – AÇÕES
-        cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
-        w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = pick_best_sim(
-            sim_ret_aco_s, sim_vol_aco, sim_pesos_aco, rf
-        )
 
-        # 5) Fronteira e melhor sim – FIIs
-        cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
-        w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = pick_best_sim(
-            sim_ret_fii_s, sim_vol_fii, sim_pesos_fii, rf
-        )
+        # FIIs
+        if len(sim_vol_fii) > 0:
+            sim_ret_fii_s = np.exp(sim_ret_fii) - 1
+            cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
+            w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = pick_best_sim(
+                sim_ret_fii_s, sim_vol_fii, sim_pesos_fii, rf
+            )
+        else:
+            sim_ret_fii_s = np.array([])
+            cf_vol_fii = cf_ret_fii = np.array([])
+            w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
-        # 6) Fronteira e melhor sim – COMBINADO
-        cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
-        w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = pick_best_sim(
-            sim_ret_comb_s, sim_vol_comb, sim_pesos_comb, rf
-        )
+
+        # COMBINADO
+        if len(st.session_state.sim_vol_comb) > 0:
+            sim_ret_comb_s = np.exp(st.session_state.sim_ret_comb) - 1
+            cf_vol_comb, cf_ret_comb = convex_frontier(st.session_state.sim_vol_comb, sim_ret_comb_s)
+            w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = pick_best_sim(
+                sim_ret_comb_s, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, rf
+            )
+        else:
+            sim_ret_comb_s = np.array([])
+            cf_vol_comb = cf_ret_comb = np.array([])
+            w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+
+
 
         tickers_comb = acoes_validos + fii_validos
 
@@ -1646,7 +1676,7 @@ def main():
         plot_results(
             sim_vol_aco, sim_ret_aco_s, cf_vol_aco, cf_ret_aco, vol_sh_aco, ret_sh_aco,
             sim_vol_fii, sim_ret_fii_s, cf_vol_fii, cf_ret_fii, vol_sh_fii, ret_sh_fii,
-            sim_vol_comb, sim_ret_comb_s, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
+            sim_vol_misto, sim_ret_comb_s, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
             vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida,
             tickers_man
         )
