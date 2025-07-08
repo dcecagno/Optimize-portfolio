@@ -247,14 +247,15 @@ def otimizar_carteira_hibrida(tickers_man: list,
 
     return list(tickers_hibrida), np.array(w_hibrida), ret_h, vol_h, sharpe_h
 
+
 def pick_best_sim(
-        sim_ret: np.ndarray, 
-        sim_vol: np.ndarray, 
-        sim_w: np.ndarray
-        ):
-    sharpe = sim_ret / sim_vol
-    idx   = np.nanargmax(sharpe)
-    return sim_w[idx], sim_ret[idx], sim_vol[idx], sharpe[idx]
+        sim_ret, 
+        sim_vol, 
+        sim_w, 
+        rf=0.0):
+    sharpe = (sim_ret - rf) / sim_vol
+    idx = np.nanargmax(sharpe)
+    return sim_w[idx], sim_ret[idx], sim_vol[idx]
 
 def convex_frontier(vols: np.ndarray, rets: np.ndarray):
     """
@@ -1428,24 +1429,21 @@ def main():
 
         # 4) Fronteira e melhor sim – AÇÕES
         cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
-        w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_aco = pick_best_sim(
-            sim_ret_aco_s, sim_vol_aco, sim_pesos_aco
+        w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = pick_best_sim(
+            sim_ret_aco_s, sim_vol_aco, sim_pesos_aco, rf
         )
-        sharpe_liquida_aco = (ret_sh_aco - rf) / vol_sh_aco
 
         # 5) Fronteira e melhor sim – FIIs
         cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
-        w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_fii = pick_best_sim(
-            sim_ret_fii_s, sim_vol_fii, sim_pesos_fii
+        w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = pick_best_sim(
+            sim_ret_fii_s, sim_vol_fii, sim_pesos_fii, rf
         )
-        sharpe_liquida_fii = (ret_sh_fii - rf) / vol_sh_fii
 
         # 6) Fronteira e melhor sim – COMBINADO
         cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_comb, sim_ret_comb_s)
-        w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_comb = pick_best_sim(
-            sim_ret_comb_s, sim_vol_comb, sim_pesos_comb
+        w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = pick_best_sim(
+            sim_ret_comb_s, sim_vol_comb, sim_pesos_comb, rf
         )
-        sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
 
         tickers_comb = acoes_validos + fii_validos
 
