@@ -1411,6 +1411,10 @@ def main():
         mu_comb = rets_comb.mean() * 252
         cov_comb = rets_comb.cov() * 252
 
+        # Conjuntos para classificação da carteira combinada
+        set_acoes = set(acoes_validos)
+        set_fiis = set(fii_validos)
+        
         # Simulação combinada (ações + FIIs) — com restrição de carteira mista
         if "simulacoes_realizadas" not in st.session_state:
             st.session_state.simulacoes_realizadas = False
@@ -1460,10 +1464,6 @@ def main():
             acoes=set(),
             fiis=set()
         )
-
-        # Conjuntos para classificação da carteira combinada
-        set_acoes = set(acoes_validos)
-        set_fiis = set(fii_validos)
 
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
             st.session_state.ativos_comb, set_acoes, set_fiis
