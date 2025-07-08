@@ -111,8 +111,12 @@ def simulate_portfolios(
         contem_acao = any(a in ativos_set for a in acoes)
         contem_fii = any(f in ativos_set for f in fiis)
 
-        if not (contem_acao and contem_fii):
-            continue  # pula carteiras que não são mistas
+        
+        # Aplica a restrição de carteira mista apenas se ambos os conjuntos forem não vazios
+        if acoes and fiis:
+            if not (contem_acao and contem_fii):
+                continue # pula carteiras que não são mistas
+
 
         results.append((ret, vol, pesos, ativos_tickers))
 
@@ -1414,7 +1418,7 @@ def main():
         # Conjuntos para classificação da carteira combinada
         set_acoes = set(acoes_validos)
         set_fiis = set(fii_validos)
-        
+
         # Simulação combinada (ações + FIIs) — com restrição de carteira mista
         if "simulacoes_realizadas" not in st.session_state:
             st.session_state.simulacoes_realizadas = False
