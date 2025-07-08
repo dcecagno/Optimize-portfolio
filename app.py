@@ -1416,12 +1416,7 @@ def main():
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
             st.session_state.ativos_comb, set_acoes, set_fiis
         )
-
-
-
-
-
-        
+       
         # Recupera os dados simulados do session_state
         sim_ret_aco = filtrar_por_indices(st.session_state.sim_ret_comb, idx_aco)
         sim_vol_aco = filtrar_por_indices(st.session_state.sim_vol_comb, idx_aco)
@@ -1461,11 +1456,11 @@ def main():
 
 
         # COMBINADO
-        if len(st.session_state.sim_vol_comb) > 0:
-            sim_ret_comb_s = np.exp(st.session_state.sim_ret_comb) - 1
-            cf_vol_comb, cf_ret_comb = convex_frontier(st.session_state.sim_vol_comb, sim_ret_comb_s)
+        if len(sim_vol_misto) > 0:
+            sim_ret_comb_s = np.exp(sim_ret_misto) - 1
+            cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
             w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = pick_best_sim(
-                sim_ret_comb_s, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, rf
+                sim_ret_comb_s, sim_vol_misto, sim_pesos_misto, rf
             )
         else:
             sim_ret_comb_s = np.array([])
