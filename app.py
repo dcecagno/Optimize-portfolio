@@ -255,7 +255,7 @@ def pick_best_sim(
         rf=0.0):
     sharpe = (sim_ret - rf) / sim_vol
     idx = np.nanargmax(sharpe)
-    return sim_w[idx], sim_ret[idx], sim_vol[idx]
+    return sim_w[idx], sim_ret[idx], sim_vol[idx], sharpe[idx]
 
 def convex_frontier(vols: np.ndarray, rets: np.ndarray):
     """
