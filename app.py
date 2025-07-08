@@ -1411,6 +1411,7 @@ def main():
         mu_comb = rets_comb.mean() * 252
         cov_comb = rets_comb.cov() * 252
 
+        # Simulação combinada (ações + FIIs) — com restrição de carteira mista
         if "simulacoes_realizadas" not in st.session_state:
             st.session_state.simulacoes_realizadas = False
 
@@ -1430,27 +1431,51 @@ def main():
             )
             st.session_state.simulacoes_realizadas = True
 
-        # Conjuntos para classificação
+        # Simulação apenas com ações (sem exigir FII)
+        sim_ret_aco, sim_vol_aco, sim_pesos_aco, ativos_aco = simulate_portfolios(
+            prices_aco,
+            acoes_validos,
+            n_sim,
+            min_assets,
+            max_assets,
+            min_w,
+            max_w,
+            seed,
+            alpha_dirichlet,
+            acoes=set(),  # <- sem restrição
+            fiis=set()
+        )
+
+        # Simulação apenas com FIIs (sem exigir ação)
+        sim_ret_fii, sim_vol_fii, sim_pesos_fii, ativos_fii = simulate_portfolios(
+            prices_fii,
+            fii_validos,
+            n_sim,
+            min_assets,
+            max_assets,
+            min_w,
+            max_w,
+            seed,
+            alpha_dirichlet,
+            acoes=set(),
+            fiis=set()
+        )
+
+        # Conjuntos para classificação da carteira combinada
         set_acoes = set(acoes_validos)
         set_fiis = set(fii_validos)
 
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
             st.session_state.ativos_comb, set_acoes, set_fiis
         )
+
        
-        # Recupera os dados simulados do session_state
-        sim_ret_aco = filtrar_por_indices(st.session_state.sim_ret_comb, idx_aco)
-        sim_vol_aco = filtrar_por_indices(st.session_state.sim_vol_comb, idx_aco)
-        sim_pesos_aco = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_aco)
-
-        sim_ret_fii = filtrar_por_indices(st.session_state.sim_ret_comb, idx_fii)
-        sim_vol_fii = filtrar_por_indices(st.session_state.sim_vol_comb, idx_fii)
-        sim_pesos_fii = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_fii)
-
+        # COMBINADO (filtrado a partir da simulação armazenada no session_state)
         sim_ret_misto = filtrar_por_indices(st.session_state.sim_ret_comb, idx_misto)
         sim_vol_misto = filtrar_por_indices(st.session_state.sim_vol_comb, idx_misto)
         sim_pesos_misto = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_misto)
 
+        # AÇÕES
         if len(sim_vol_aco) > 0:
             sim_ret_aco_s = np.exp(sim_ret_aco) - 1
             cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
@@ -1461,7 +1486,6 @@ def main():
             sim_ret_aco_s = np.array([])
             cf_vol_aco = cf_ret_aco = np.array([])
             w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
-
 
         # FIIs
         if len(sim_vol_fii) > 0:
@@ -1475,8 +1499,7 @@ def main():
             cf_vol_fii = cf_ret_fii = np.array([])
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
-
-        # COMBINADO
+        # COMBINADO (continuação)
         if len(sim_vol_misto) > 0:
             sim_ret_comb_s = np.exp(sim_ret_misto) - 1
             cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
@@ -1488,11 +1511,9 @@ def main():
             cf_vol_comb = cf_ret_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
 
-
-
         tickers_comb = acoes_validos + fii_validos
-
         tickers_man = normalizar_tickers(tickers_man)
+
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
         tickers_faltando = [t for t in tickers_man if t not in prices_comb.columns]
