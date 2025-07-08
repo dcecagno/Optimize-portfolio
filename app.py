@@ -1647,29 +1647,40 @@ def main():
 
         # Para ações: usa mu_aco e cov_aco
         for t in acoes_validos:
-            mu   = mu_aco[t]
-            vol  = np.sqrt(cov_aco.loc[t, t])
-            sharpe = (mu - rf) / vol
-            stats.append({
-                "Ticker": t.replace(".SA", ""),
-                "Ativo":  "Ação",
-                "Sharpe": sharpe,
-                "Retorno": mu,
-                "Volatilidade": vol
-            })
+            try:
+                mu = mu_aco[t]
+                vol = np.sqrt(cov_aco.loc[t, t])
+                if np.isnan(mu) or np.isnan(vol) or vol == 0:
+                    continue
+                sharpe = (mu - rf) / vol
+                stats.append({
+                    "Ticker": t.replace(".SA", ""),
+                    "Ativo": "Ação",
+                    "Sharpe": sharpe,
+                    "Retorno": mu,
+                    "Volatilidade": vol
+                })
+            except Exception:
+                continue
+
 
         # Para FIIs: usa mu_fii e cov_fii
         for t in fii_validos:
-            mu   = mu_fii[t]
-            vol  = np.sqrt(cov_fii.loc[t, t])
-            sharpe = (mu - rf) / vol
-            stats.append({
-                "Ticker": t.replace(".SA", ""),
-                "Ativo":  "FII",
-                "Sharpe": sharpe,
-                "Retorno": mu,
-                "Volatilidade": vol
-            })
+            try:
+                mu = mu_fii[t]
+                vol = np.sqrt(cov_fii.loc[t, t])
+                if np.isnan(mu) or np.isnan(vol) or vol == 0:
+                    continue
+                sharpe = (mu - rf) / vol
+                stats.append({
+                    "Ticker": t.replace(".SA", ""),
+                    "Ativo":  "FII",
+                    "Sharpe": sharpe,
+                    "Retorno": mu,
+                    "Volatilidade": vol
+                })
+            except Exception:
+                continue
 
         # Converte em DataFrame e ordena
         df_stats = pd.DataFrame(stats) \
