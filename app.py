@@ -1731,16 +1731,20 @@ def main():
         st.divider()
 
         for (nome, w, ticks, cov, s, r, v) in cenarios:
-            render_portfolio_section(
-                name=nome,
-                weights=w,
-                tickers=ticks,
-                cov_df=cov,
-                sharpe=s,
-                ret=r,
-                vol=v,
-                min_weight=0.001
-            )
+            if w is not None and ticks is not None and len(w) == len(ticks) and len(w) > 0:
+                render_portfolio_section(
+                    name=nome,
+                    weights=w,
+                    tickers=ticks,
+                    cov_df=cov,
+                    sharpe=s,
+                    ret=r,
+                    vol=v,
+                    min_weight=0.001
+                )
+            else:
+                st.warning(f"Carteira '{nome}' não pôde ser exibida por dados inconsistentes ou vazios.")
+
             if nome == "Carteira de Sharpe Máximo – AÇÕES E FIIs":
                 # acha índices de ações e FIIs na carteira combinada
                 idx_acoes = [ticks.index(t) for t in acoes_validos if t in ticks]
