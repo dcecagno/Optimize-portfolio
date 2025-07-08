@@ -78,8 +78,11 @@ def simulate_portfolios(
     min_w: float,
     max_w: float,
     seed: int,
-    alpha: float = 0.3
+    alpha: float = 0.3,
+    acoes: set = set(),
+    fiis: set = set()
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[list[str]]]:
+
     """
     Simula carteiras com restrições de cardinalidade e peso.
     Agora também retorna os tickers sorteados em cada simulação.
@@ -103,6 +106,14 @@ def simulate_portfolios(
         ret = np.dot(mu.values, pesos)
         vol = np.sqrt(pesos.T @ cov.values @ pesos)
         ativos_tickers = [tickers[i] for i in ativos_idx]
+        # Verifica se a carteira contém pelo menos uma ação e um FII
+        ativos_set = set(ativos_tickers)
+        contem_acao = any(a in ativos_set for a in acoes)
+        contem_fii = any(f in ativos_set for f in fiis)
+
+        if not (contem_acao and contem_fii):
+            continue  # pula carteiras que não são mistas
+
         results.append((ret, vol, pesos, ativos_tickers))
 
     if not results:
@@ -1405,7 +1416,9 @@ def main():
                 min_w,
                 max_w,
                 seed,
-                alpha_dirichlet
+                alpha_dirichlet,
+                acoes=set_acoes,
+                fiis=set_fiis
             )
             st.session_state.simulacoes_realizadas = True
 
