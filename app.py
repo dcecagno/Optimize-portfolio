@@ -1479,13 +1479,14 @@ def main():
         sim_vol_misto = filtrar_por_indices(st.session_state.sim_vol_comb, idx_misto)
         sim_pesos_misto = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_misto)
 
-        # AÇÕES
+       # AÇÕES
         if len(sim_vol_aco) > 0:
             sim_ret_aco_s = np.exp(sim_ret_aco) - 1
             cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
             w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = pick_best_sim(
                 sim_ret_aco_s, sim_vol_aco, sim_pesos_aco, rf
             )
+            ret_sh_aco = np.exp(ret_sh_aco) - 1  # <-- conversão adicionada
         else:
             sim_ret_aco_s = np.array([])
             cf_vol_aco = cf_ret_aco = np.array([])
@@ -1498,6 +1499,7 @@ def main():
             w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = pick_best_sim(
                 sim_ret_fii_s, sim_vol_fii, sim_pesos_fii, rf
             )
+            ret_sh_fii = np.exp(ret_sh_fii) - 1  # <-- conversão adicionada
         else:
             sim_ret_fii_s = np.array([])
             cf_vol_fii = cf_ret_fii = np.array([])
@@ -1510,10 +1512,12 @@ def main():
             w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = pick_best_sim(
                 sim_ret_comb_s, sim_vol_misto, sim_pesos_misto, rf
             )
+            ret_sh_comb = np.exp(ret_sh_comb) - 1  # <-- conversão adicionada
         else:
             sim_ret_comb_s = np.array([])
             cf_vol_comb = cf_ret_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+
 
         tickers_comb = acoes_validos + fii_validos
         tickers_man = normalizar_tickers(tickers_man)
