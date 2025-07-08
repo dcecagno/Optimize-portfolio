@@ -1396,7 +1396,6 @@ def main():
             st.session_state.simulacoes_realizadas = False
 
         if not st.session_state.simulacoes_realizadas:
-            # Simulação para ações
             st.session_state.sim_ret_comb, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, st.session_state.ativos_comb = simulate_portfolios(
                 prices_comb,
                 acoes_validos + fii_validos,
@@ -1408,18 +1407,18 @@ def main():
                 seed,
                 alpha_dirichlet
             )
-
-            # Conjuntos para classificação
-            set_acoes = set(acoes_validos)
-            set_fiis = set(fii_validos)
-
-            idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
-                st.session_state.ativos_comb, set_acoes, set_fiis
-            )
-
-
-
             st.session_state.simulacoes_realizadas = True
+
+        # Conjuntos para classificação
+        set_acoes = set(acoes_validos)
+        set_fiis = set(fii_validos)
+
+        idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
+            st.session_state.ativos_comb, set_acoes, set_fiis
+        )
+
+
+
 
 
         
