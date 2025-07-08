@@ -1731,7 +1731,7 @@ def main():
         st.divider()
 
         for (nome, w, ticks, cov, s, r, v) in cenarios:
-            if w is not None and ticks is not None and len(w) == len(ticks) and len(w) > 0:
+            if isinstance(w, (list, np.ndarray)) and isinstance(ticks, list) and len(w) == len(ticks) and len(w) > 0:
                 render_portfolio_section(
                     name=nome,
                     weights=w,
