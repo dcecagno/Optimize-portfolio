@@ -1356,7 +1356,12 @@ def main():
 
         # Listas de ativos
         all_tickers = prices_read.columns.tolist()
-        ibov = ibov_read.columns.tolist()
+        
+        if '^BVSP' in ibov_read.columns:
+            ibovespa = ibov_read['^BVSP']
+        else:
+            st.error("Coluna '^BVSP' não encontrada no arquivo de preços do Ibovespa.")
+            st.stop()
 
         # 4) Filtra Ações, FIIs e “não localizados”
         acoes_detectadas = [
@@ -1409,7 +1414,6 @@ def main():
         prices_aco  = prices_read[acoes_validos]
         prices_fii  = prices_read[fii_validos]
         prices_comb = prices_read[acoes_validos + fii_validos]
-        ibovespa = prices_read[ibov]
 
         # Prepara dados
         rets_aco = prices_aco.pct_change().dropna()
@@ -1423,9 +1427,8 @@ def main():
         rets_comb = prices_comb.pct_change().dropna()
         mu_comb = rets_comb.mean() * 252
         cov_comb = rets_comb.cov() * 252
-
-        
-        rets_ibov = prices_read['^BVSP'].pct_change().dropna()
+                
+        rets_ibov = ibovespa.pct_change().dropna()
 
         # Retorno anualizado
         ret_anual_ibov = rets_ibov.mean() * 252
