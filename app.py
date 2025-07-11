@@ -341,7 +341,8 @@ def plot_results(
     vol_man,     ret_man,
     vol_opt_manual, ret_opt_manual,
     vol_hibrida, ret_hibrida,
-    tickers_man
+    tickers_man,
+    ret_anual_ibov, vol_anual_ibov 
 ):
     
     plt.figure(figsize=(12,8))
@@ -360,6 +361,8 @@ def plot_results(
     plt.scatter(sim_vol_fii, sim_ret_fii_s, s=8, alpha=0.12, c='green')
     plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2)
     plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, label='Sharpe Max – FII')
+
+    plt.scatter(vol_anual_ibov, ret_anual_ibov, c='brown', s=100, marker='s', label='Ibovespa')
 
 
     # Carteiras manuais
@@ -539,6 +542,8 @@ def main():
     # Upload do arquivo CSV
     url = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/all_precos.csv"
     prices_read = _read_close_prices(url)
+    url2 = "https://raw.githubusercontent.com/dcecagno/Optimize-portfolio/main/ibovespa_precos.csv"
+    ibov_read = _read_close_prices(url2)
 
     # Dicionários de classificação
     SECTOR_MAP_ACOES = {
@@ -1282,6 +1287,7 @@ def main():
     time_end = pd.Timestamp.now().normalize()
     time_start = time_end - pd.DateOffset(years=anos)
     prices_read = prices_read.loc[time_start:time_end]
+    ibov_read = ibov_read.loc[time_start:time_end]
     
     # Parâmetros para a simulação de Monte Carlo
     n_sim = 1_000_000
@@ -1291,13 +1297,14 @@ def main():
     max_assets = st.number_input("Número máximo de ativos", min_value=1, max_value=20, value=15)
     min_w_percent = st.number_input("Peso mínimo por ativo (%)", min_value=0, max_value=100, value=3, step=1)
     max_w_percent = st.number_input("Peso máximo por ativo (%)", min_value=0, max_value=100, value=30, step=1)
-    rf_raw = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=5)
+    #rf_raw = st.number_input("Taxa livre de risco anual (%)", min_value=0, max_value=100, value=5)
 
     # Converte para proporção (0 a 1)
     min_w = min_w_percent / 100
     max_w = max_w_percent / 100
-    rf_percent = rf_raw / 100
-    rf = (1 + rf_percent) ** anos - 1
+    #rf_percent = rf_raw / 100
+    #rf = (1 + rf_percent) ** anos - 1
+    rf = 0
 
     # Carteira manual
     st.subheader("Carteira Manual (opcional)")
@@ -1349,6 +1356,7 @@ def main():
 
         # Listas de ativos
         all_tickers = prices_read.columns.tolist()
+        ibov = ibov_read.columns.tolist()
 
         # 4) Filtra Ações, FIIs e “não localizados”
         acoes_detectadas = [
@@ -1378,7 +1386,7 @@ def main():
         # Filtra os tickers com base em um mínimo desejado de observações (por exemplo, 200)
         acoes_validos, acoes_problema = filtrar_valid_tickers(prices_read, acoes, min_obs=200)
         fii_validos, fii_problema     = filtrar_valid_tickers(prices_read, fii, min_obs=200)
-
+        
         acoes_validos.sort()
         fii_validos.sort()
 
@@ -1401,6 +1409,7 @@ def main():
         prices_aco  = prices_read[acoes_validos]
         prices_fii  = prices_read[fii_validos]
         prices_comb = prices_read[acoes_validos + fii_validos]
+        ibovespa = prices_read[ibov]
 
         # Prepara dados
         rets_aco = prices_aco.pct_change().dropna()
@@ -1414,6 +1423,15 @@ def main():
         rets_comb = prices_comb.pct_change().dropna()
         mu_comb = rets_comb.mean() * 252
         cov_comb = rets_comb.cov() * 252
+
+        
+        rets_ibov = prices_read['^BVSP'].pct_change().dropna()
+
+        # Retorno anualizado
+        ret_anual_ibov = rets_ibov.mean() * 252
+
+        # Volatilidade anualizada
+        vol_anual_ibov = rets_ibov.std() * np.sqrt(252)
 
         # Conjuntos para classificação da carteira combinada
         set_acoes = set(acoes_validos)
@@ -1733,9 +1751,9 @@ def main():
             sim_vol_fii, sim_ret_fii_s, cf_vol_fii, cf_ret_fii, vol_sh_fii, ret_sh_fii,
             sim_vol_misto, sim_ret_comb_s, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
             vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida,
-            tickers_man
+            tickers_man, ret_anual_ibov, vol_anual_ibov
         )
-
+        
         cenarios = [
         ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_liquida_aco, ret_sh_aco, vol_sh_aco),
         ("Carteira de Sharpe Máximo – FIIs",  w_sharpe_fii,  fii_validos,  cov_fii,  sharpe_liquida_fii,  ret_sh_fii,  vol_sh_fii),
