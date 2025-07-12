@@ -1655,7 +1655,7 @@ def main():
 
             # Prepara DataFrame alinhado
             prices_manual = prices_comb[tickers_man].dropna()
-            rets_manual   = prices_manual.pct_change().dropna()
+            rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
 
             mu_manual  = rets_manual.mean() * 252
             cov_manual = rets_manual.cov()  * 252
