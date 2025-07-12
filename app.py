@@ -362,7 +362,7 @@ def plot_results(
     plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2)
     plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, label='Sharpe Max – FII')
 
-    plt.scatter(vol_anual_ibov, ret_anual_ibov, c='brown', s=100, marker='s', label='Ibovespa')
+    plt.scatter(vol_anual_ibov, ret_anual_ibov, c='brown', s=180, marker='*', label='Ibovespa')
 
 
     # Carteiras manuais
