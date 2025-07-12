@@ -1710,7 +1710,7 @@ def main():
         # Para ações: usa mu_aco e cov_aco
         for t in acoes_validos:
             try:
-                mu = mu_aco[t]
+                mu = np.exp(mu_aco[t]) - 1
                 vol = np.sqrt(cov_aco.loc[t, t])
                 if np.isnan(mu) or np.isnan(vol) or vol == 0:
                     continue
@@ -1729,7 +1729,7 @@ def main():
         # Para FIIs: usa mu_fii e cov_fii
         for t in fii_validos:
             try:
-                mu = mu_fii[t]
+                mu = np.exp(mu_fii[t]) - 1
                 vol = np.sqrt(cov_fii.loc[t, t])
                 if np.isnan(mu) or np.isnan(vol) or vol == 0:
                     continue
