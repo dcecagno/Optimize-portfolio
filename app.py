@@ -350,36 +350,39 @@ def plot_results(
     # Monte Carlo e Fronteiras
     plt.scatter(sim_vol_comb, sim_ret_comb_s, s=8, alpha=0.12, c='red')
     plt.plot(vol_lin_comb, ret_lin_comb, '--', c='red', lw=2)
-    plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, edgecolors='black', linewidths=0.2, label='Sharpe Max – Ações + FII')
+    plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, edgecolors='black', linewidths=2.0, label='Sharpe Max – Ações + FII')
 
 
     plt.scatter(sim_vol_aco, sim_ret_aco_s, s=8, alpha=0.12, c='blue')
     plt.plot(vol_lin_aco, ret_lin_aco, '--', c='blue', lw=2)
-    plt.scatter(vol_sh_aco, ret_sh_aco, marker='*', c='blue', s=180, edgecolors='black', linewidths=0.2, label='Sharpe Max – Ações')
+    plt.scatter(vol_sh_aco, ret_sh_aco, marker='*', c='blue', s=180, edgecolors='black', linewidths=2.0, label='Sharpe Max – Ações')
 
 
     plt.scatter(sim_vol_fii, sim_ret_fii_s, s=8, alpha=0.12, c='green')
     plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2)
-    plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, edgecolors='black', linewidths=0.2, label='Sharpe Max – FII')
+    plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, edgecolors='black', linewidths=2.0, label='Sharpe Max – FII')
 
-    plt.scatter(vol_anual_ibov, ret_anual_ibov, marker='*', c='brown', s=180, edgecolors='black', linewidths=0.2, label='Ibovespa')
+    plt.scatter(vol_anual_ibov, ret_anual_ibov, marker='*', c='brown', s=180, edgecolors='black', linewidths=2.0, label='Ibovespa')
 
 
     # Carteiras manuais
     if tickers_man:
         plt.scatter(
             vol_man, ret_man,
-            c="black", s=80, marker="X",
+            c="orange", s=80, marker="*",
+            edgecolors='black', linewidths=2.0, 
             label="Carteira Manual"
         )
         plt.scatter(
             vol_opt_manual, ret_opt_manual,
             c="orange", s=80, marker="D",
+            edgecolors='black', linewidths=2.0, 
             label="Manual Otimizada"
         )
         plt.scatter(
             vol_hibrida, ret_hibrida,
-            c="purple", s=80, marker="P",
+            c="orange", s=80, marker="P",
+            edgecolors='black', linewidths=2.0, 
             label="Carteira Manual com Inclusão"
         )
 
