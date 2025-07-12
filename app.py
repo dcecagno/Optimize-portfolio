@@ -1419,16 +1419,16 @@ def main():
         prices_fii  = prices_read[fii_validos]
         prices_comb = prices_read[acoes_validos + fii_validos]
 
-        # Prepara dados
-        rets_aco = prices_aco.pct_change().dropna()
+        # Usa log-retornos para garantir consistência com retorno composto
+        rets_aco = np.log(prices_aco / prices_aco.shift(1)).dropna()
         mu_aco = rets_aco.mean() * 252
         cov_aco = rets_aco.cov() * 252
 
-        rets_fii = prices_fii.pct_change().dropna()
+        rets_fii = np.log(prices_fii / prices_fii.shift(1)).dropna()
         mu_fii = rets_fii.mean() * 252
         cov_fii = rets_fii.cov() * 252
 
-        rets_comb = prices_comb.pct_change().dropna()
+        rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
         mu_comb = rets_comb.mean() * 252
         cov_comb = rets_comb.cov() * 252
                 
