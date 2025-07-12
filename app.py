@@ -87,7 +87,7 @@ def simulate_portfolios(
     Simula carteiras com restrições de cardinalidade e peso.
     Agora também retorna os tickers sorteados em cada simulação.
     """
-    rets = prices.pct_change().dropna()
+    rets = np.log(prices / prices.shift(1)).dropna()
     mu = rets.mean() * 252
     cov = rets.cov() * 252
     rng = np.random.default_rng(seed)
