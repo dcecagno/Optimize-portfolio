@@ -381,9 +381,9 @@ def plot_results(
         )
         plt.scatter(
             vol_hibrida, ret_hibrida,
-            c="orange", s=180, marker="P",
+            c="orange", s=120, marker="P",
             edgecolors='black', linewidths=1.0, 
-            label="Carteira Manual com Inclusão"
+            label="Carteira Híbrida (com Inclusão)"
         )
 
     plt.xlabel("Volatilidade Anualizada")
