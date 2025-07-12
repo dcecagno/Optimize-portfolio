@@ -1665,9 +1665,11 @@ def main():
 
             try:
                 # Carteira manual original
-                ret_man = np.exp(np.dot(w_man, mu_vec)) - 1
-                vol_man = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
-                sharpe_man = (ret_man - rf) / vol_man
+                log_ret_man = np.dot(w_man, mu_vec)
+                vol_man     = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
+                sharpe_man  = (log_ret_man - rf) / vol_man
+                ret_man     = np.exp(log_ret_man) - 1  # <-- só para exibir
+
 
                 # Carteira manual otimizada
                 w_opt_manual, sharpe_opt_manual, ok_opt, msg_opt = optimize_max_sharpe(
@@ -1679,8 +1681,11 @@ def main():
                     w_opt_manual = w_man
                     sharpe_opt_manual = sharpe_man
 
-                ret_opt_manual = np.exp(np.dot(w_opt_manual, mu_vec)) - 1
+                log_ret_opt = np.dot(w_opt_manual, mu_vec)
                 vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
+                sharpe_opt_manual = (log_ret_opt - rf) / vol_opt_manual
+                ret_opt_manual = np.exp(log_ret_opt) - 1
+
                 cov_opt_manual = cov_manual
 
                 # Carteira Híbrida – via SLSQP, mantendo pesos mínimos manuais e teto extra  
@@ -1694,6 +1699,7 @@ def main():
                         percentual_adicional, # 6) float em [0,1]
                         rf                    # 7) taxa livre de risco
                     )
+                ret_hibrida_comp = np.exp(ret_hibrida) - 1
                 cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
 
             except Exception as e:
@@ -1757,7 +1763,7 @@ def main():
             sim_vol_aco, sim_ret_aco_s, cf_vol_aco, cf_ret_aco, vol_sh_aco, ret_sh_aco,
             sim_vol_fii, sim_ret_fii_s, cf_vol_fii, cf_ret_fii, vol_sh_fii, ret_sh_fii,
             sim_vol_misto, sim_ret_comb_s, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
-            vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida,
+            vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida_comp,
             tickers_man, ret_anual_ibov, vol_anual_ibov
         )
         
@@ -1777,7 +1783,7 @@ def main():
             )
             cenarios.append(
                 (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)",
-                w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida)
+                w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida_comp, vol_hibrida)
             )
         else:
             st.info("Nenhum ticker válido na Carteira Manual → pulando cenário manual.")
