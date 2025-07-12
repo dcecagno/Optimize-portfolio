@@ -369,7 +369,7 @@ def plot_results(
     if tickers_man:
         plt.scatter(
             vol_man, ret_man,
-            c="orange", s=80, marker="*",
+            c="orange", s=180, marker="*",
             edgecolors='black', linewidths=1.0, 
             label="Carteira Manual"
         )
@@ -381,7 +381,7 @@ def plot_results(
         )
         plt.scatter(
             vol_hibrida, ret_hibrida,
-            c="orange", s=80, marker="P",
+            c="orange", s=180, marker="P",
             edgecolors='black', linewidths=1.0, 
             label="Carteira Manual com Inclusão"
         )
@@ -1313,7 +1313,7 @@ def main():
     st.subheader("Carteira Manual (opcional)")
     
     # Entrada da carteira manual em valores monetários
-    num_ativos = st.number_input("Número de ativos na carteira manual", min_value=1, max_value=20, value=4)
+    num_ativos = st.number_input("Número de ativos na sua carteira", min_value=1, max_value=20, value=4)
     tickers_man = []
     valores_man = []
 
@@ -1341,9 +1341,10 @@ def main():
     # Normaliza os tickers para garantir o formato correto (ex: PETR3 → PETR3.SA)
     tickers_man = normalizar_tickers(tickers_man)
 
-    st.subheader("Carteira Otimizada (opcional)")
+    st.subheader("Carteira Híbrida (opcional)")
     percentual_adicional = st.slider(
-                    "Percentual adicional para otimização da carteira híbrida (%)",
+                    "Percentual adicional para otimização da carteira híbrida (%). " \
+                    "Insira quantos % você gostaria de aportar na carteira",
                     min_value=0,
                     max_value=100,
                     value=30,
