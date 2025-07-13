@@ -319,45 +319,37 @@ def convex_frontier(vols: np.ndarray, rets: np.ndarray):
         # fallback: retorna os pontos brutos
         return vol_f, ret_f, idx_front
 
-def convex_frontier_with_indices(
-    vols: np.ndarray,
-    rets: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, list[int]]:
+def convex_frontier_with_indices(vols: np.ndarray, rets: np.ndarray):
     """
-    Retorna:
-      - vol_front: volatilidades do upper hull, ordenadas
-      - ret_front: retornos correspondentes
-      - idxs: índices originais em `vols`/`rets` dos pontos do envelope
+    Retorna
+      vol_front: volatilidades dos vértices do upper hull
+      ret_front: retornos correspondentes
+      idxs: índices originais em vols/rets desses vértices
     """
-    # fallback se poucos pontos
     if len(vols) < 2:
         return np.array([]), np.array([]), []
 
-    # monta pontos e calcula ConvexHull
     pts = np.column_stack((vols, rets))
     try:
         hull = ConvexHull(pts)
     except Exception:
         return np.array([]), np.array([]), []
 
-    # ordena vértices por volatilidade
     verts = sorted(hull.vertices, key=lambda i: vols[i])
-
-    # filtra envelope superior
     envelope, idxs = [], []
-    current_max_ret = -np.inf
+    cur_max = -np.inf
     for i in verts:
         r, v = rets[i], vols[i]
-        if r >= current_max_ret:
+        if r >= cur_max:
             envelope.append((v, r))
             idxs.append(i)
-            current_max_ret = r
+            cur_max = r
 
     if not envelope:
         return np.array([]), np.array([]), []
 
-    vol_front, ret_front = map(np.array, zip(*envelope))
-    return vol_front, ret_front, idxs
+    vol_f, ret_f = map(np.array, zip(*envelope))
+    return vol_f, ret_f, idxs
 
 def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tickers, rf=0.0):
     """
@@ -448,11 +440,6 @@ def plot_results(
     tickers_man,
     ret_anual_ibov, vol_anual_ibov
 ):
-    import matplotlib.pyplot as plt
-    import matplotlib.ticker as mtick
-    import numpy as np
-    import streamlit as st
-
     fig, ax = plt.subplots(figsize=(12, 8))
 
     # Monte Carlo clouds
@@ -1432,7 +1419,7 @@ def main():
     ibov_read = ibov_read.loc[time_start:time_end]
     
     # Parâmetros para a simulação de Monte Carlo
-    n_sim = 100_000
+    n_sim = 50_000
     seed = 42
     alpha_dirichlet = 1
     min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
@@ -1645,17 +1632,14 @@ def main():
 
         # ——— AÇÕES ———
         if sim_vol_aco.size > 0:
-            vol_lin_aco, ret_lin_aco, idxs_aco = convex_frontier_with_indices(
-                sim_vol_aco, sim_ret_aco
-            )
+            vol_lin_aco, ret_lin_aco, idxs = convex_frontier_with_indices(sim_vol_aco, sim_ret_aco)
             if vol_lin_aco.size > 0:
-                sharpe_vals_aco = (ret_lin_aco - rf) / vol_lin_aco
-                best = np.nanargmax(sharpe_vals_aco)
-                idx_sharpe_aco = idxs_aco[best]
-                w_sharpe_aco   = sim_pesos_aco[idx_sharpe_aco]
-                ret_sh_aco     = sim_ret_aco[idx_sharpe_aco]
-                vol_sh_aco     = sim_vol_aco[idx_sharpe_aco]
-                sharpe_liquida_aco = sharpe_vals_aco[best]
+                sharpe_vals = (ret_lin_aco - rf) / vol_lin_aco
+                best = np.nanargmax(sharpe_vals)
+                idx_sharpe_aco     = idxs[best]
+                w_sharpe_aco       = sim_pesos_aco[idx_sharpe_aco]
+                ret_sh_aco, vol_sh_aco = sim_ret_aco[idx_sharpe_aco], sim_vol_aco[idx_sharpe_aco]
+                sharpe_liquida_aco = sharpe_vals[best]
             else:
                 w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = \
                     pick_best_sim(sim_ret_aco, sim_vol_aco, sim_pesos_aco, rf)
@@ -1666,17 +1650,14 @@ def main():
 
         # ——— FIIs ———
         if sim_vol_fii.size > 0:
-            vol_lin_fii, ret_lin_fii, idxs_fii = convex_frontier_with_indices(
-                sim_vol_fii, sim_ret_fii
-            )
+            vol_lin_fii, ret_lin_fii, idxs = convex_frontier_with_indices(sim_vol_fii, sim_ret_fii)
             if vol_lin_fii.size > 0:
-                sharpe_vals_fii = (ret_lin_fii - rf) / vol_lin_fii
-                best = np.nanargmax(sharpe_vals_fii)
-                idx_sharpe_fii = idxs_fii[best]
-                w_sharpe_fii   = sim_pesos_fii[idx_sharpe_fii]
-                ret_sh_fii     = sim_ret_fii[idx_sharpe_fii]
-                vol_sh_fii     = sim_vol_fii[idx_sharpe_fii]
-                sharpe_liquida_fii = sharpe_vals_fii[best]
+                sharpe_vals = (ret_lin_fii - rf) / vol_lin_fii
+                best = np.nanargmax(sharpe_vals)
+                idx_sharpe_fii     = idxs[best]
+                w_sharpe_fii       = sim_pesos_fii[idx_sharpe_fii]
+                ret_sh_fii, vol_sh_fii = sim_ret_fii[idx_sharpe_fii], sim_vol_fii[idx_sharpe_fii]
+                sharpe_liquida_fii = sharpe_vals[best]
             else:
                 w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = \
                     pick_best_sim(sim_ret_fii, sim_vol_fii, sim_pesos_fii, rf)
@@ -1687,34 +1668,18 @@ def main():
 
         # ——— COMBINADO (Ações + FIIs) ———
         if sim_vol_misto.size > 0:
-            vol_lin_comb, ret_lin_comb, idxs_comb = convex_frontier_with_indices(
-                sim_vol_misto, sim_ret_misto
-            )
+            vol_lin_comb, ret_lin_comb, idxs = convex_frontier_with_indices(sim_vol_misto, sim_ret_misto)
             if vol_lin_comb.size > 0:
-                sharpe_vals_comb = (ret_lin_comb - rf) / vol_lin_comb
-                best = np.nanargmax(sharpe_vals_comb)
-                idx_sharpe_comb = idxs_comb[best]
-                w_sharpe_comb   = sim_pesos_misto[idx_sharpe_comb]
-                ret_sh_comb     = sim_ret_misto[idx_sharpe_comb]
-                vol_sh_comb     = sim_vol_misto[idx_sharpe_comb]
-                sharpe_liquida_comb = sharpe_vals_comb[best]
+                sharpe_vals = (ret_lin_comb - rf) / vol_lin_comb
+                best = np.nanargmax(sharpe_vals)
+                idx_sharpe_comb     = idxs[best]
+                w_sharpe_comb       = sim_pesos_misto[idx_sharpe_comb]
+                ret_sh_comb, vol_sh_comb = sim_ret_misto[idx_sharpe_comb], sim_vol_misto[idx_sharpe_comb]
+                sharpe_liquida_comb = sharpe_vals[best]
             else:
                 w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
                     pick_best_sim(sim_ret_misto, sim_vol_misto, sim_pesos_misto, rf)
                 vol_lin_comb = ret_lin_comb = np.array([])
-        else:
-            vol_lin_comb = ret_lin_comb = np.array([])
-            w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
-
-
-        # ——— COMBINADO (Ações + FIIs) ———
-
-        if len(sim_vol_misto) > 0:
-            vol_lin_comb, ret_lin_comb, idx_sharpe_comb, (ret_sh_comb, vol_sh_comb, sharpe_liquida_comb, w_sharpe_comb) = \
-                build_efficient_frontier_compound(
-                    sim_vol_misto, sim_ret_misto, sim_pesos_misto,
-                    prices_comb, tickers_comb, rf
-                )
         else:
             vol_lin_comb = ret_lin_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
@@ -1941,12 +1906,22 @@ def main():
 
         # Plotagem
         plot_results(
-            sim_vol_aco,  sim_ret_aco,   vol_lin_aco,  ret_lin_aco,  vol_sh_aco,  ret_sh_aco,
-            sim_vol_fii,  sim_ret_fii,   vol_lin_fii,  ret_lin_fii,  vol_sh_fii,  ret_sh_fii,
-            sim_vol_misto, sim_ret_misto, vol_lin_comb, ret_lin_comb, vol_sh_comb, ret_sh_comb,
-            vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida,
-            tickers_man, ret_anual_ibov, vol_anual_ibov
+            sim_vol_aco, sim_ret_aco,
+            vol_lin_aco, ret_lin_aco,
+            vol_sh_aco, ret_sh_aco,
+            sim_vol_fii, sim_ret_fii,
+            vol_lin_fii, ret_lin_fii,
+            vol_sh_fii, ret_sh_fii,
+            sim_vol_misto, sim_ret_misto,
+            vol_lin_comb, ret_lin_comb,
+            vol_sh_comb, ret_sh_comb,
+            vol_man, ret_man,
+            vol_opt_manual, ret_opt_manual,
+            vol_hibrida, ret_hibrida,
+            tickers_man,
+            ret_anual_ibov, vol_anual_ibov
         )
+
 
         
         cenarios = [
