@@ -1561,16 +1561,22 @@ def main():
             sim_ret_comb_s = np.exp(sim_ret_misto) - 1
             cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
 
-            w_sharpe_comb, *_ = pick_best_sim(sim_ret_misto, sim_vol_misto, sim_pesos_misto, rf)
-            # ← aqui estava o bug: antes você não atribuiu o retorno da função às variáveis locais
-            ret_sh_comb, vol_sh_comb = dynamic_portfolio_metrics(
-                prices_comb, w_sharpe_comb, tickers_comb, periods_per_year=252
+            w_sharpe_comb, *_ = pick_best_sim(
+                sim_ret_misto, sim_vol_misto, sim_pesos_misto, rf
+            )
+
+            # ← Chamada CORRETA, atribuindo o retorno a ret_sh_comb e vol_sh_comb
+            ret_sh_aco, vol_sh_aco = dynamic_portfolio_metrics(
+                prices_aco,
+                w_sharpe_aco,
+                acoes_validos
             )
             sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
         else:
             sim_ret_comb_s = np.array([])
             cf_vol_comb = cf_ret_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+
 
         tickers_comb = acoes_validos + fii_validos
         tickers_man = normalizar_tickers(tickers_man)
