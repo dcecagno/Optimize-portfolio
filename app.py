@@ -116,20 +116,19 @@ def simulate_portfolios(
     max_w: float,
     seed: int,
     alpha: float = 0.3,
-    periods_per_year: int = 252,
     acoes: set = set(),
     fiis: set = set()
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[list[str]]]:
+    """
+    Simula carteiras Monte Carlo usando log‐retornos para garantir convexidade,
+    retornando retorno composto anualizado e volatilidade anual no mesmo espaço.
+    """
+    # 1) log‐retornos diários e anualização exata
+    rets_log = np.log(prices / prices.shift(1)).dropna()
+    mu_log   = rets_log.mean() * 252
+    cov_log  = rets_log.cov()  * 252
 
-    """
-    Simula carteiras com restrições de cardinalidade e peso.
-    Agora também retorna os tickers sorteados em cada simulação.
-    """
-    rets = prices.pct_change().dropna()
-    mu = rets.mean() * 252
-    cov = rets.cov() * 252
     rng = np.random.default_rng(seed)
-
     results = []
 
     for _ in range(n_sim):
@@ -138,33 +137,34 @@ def simulate_portfolios(
         pesos = np.zeros(len(tickers))
         pesos[ativos_idx] = rng.dirichlet(alpha * np.ones(k))
 
+        # respeita bounds de peso
         if not (min_w <= pesos[ativos_idx].min() and pesos[ativos_idx].max() <= max_w):
             continue
 
-        # retorno simples anual aproximado
-        ret_simple_ann = np.dot(mu.values, pesos)
-        # compounding anual exato sobre o simples anual
-        ret = (1 + ret_simple_ann/periods_per_year)**periods_per_year - 1
+        # 2) retorno composto anualizado exato
+        ret_log_ann = np.dot(mu_log.values, pesos)
+        ret = np.exp(ret_log_ann) - 1
 
-        vol = np.sqrt(pesos.T @ cov.values @ pesos)
+        # 3) volatilidade anualizada no domínio log‐retorno
+        vol = np.sqrt(pesos.T @ cov_log.values @ pesos)
+
         ativos_tickers = [tickers[i] for i in ativos_idx]
-        # Verifica se a carteira contém pelo menos uma ação e um FII
         ativos_set = set(ativos_tickers)
-        contem_acao = any(a in ativos_set for a in acoes)
-        contem_fii = any(f in ativos_set for f in fiis)
-        
-        # Aplica a restrição de carteira mista apenas se ambos os conjuntos forem não vazios
+
+        # 4) aplica restrição mista se necessário
         if acoes and fiis:
+            contem_acao = any(a in ativos_set for a in acoes)
+            contem_fii  = any(f in ativos_set for f in fiis)
             if not (contem_acao and contem_fii):
-                continue # pula carteiras que não são mistas
+                continue
 
         results.append((ret, vol, pesos, ativos_tickers))
 
     if not results:
         return np.array([]), np.array([]), np.array([]), []
 
-    ret, vol, w, ativos_tickers = zip(*results)
-    return np.array(ret), np.array(vol), np.array(w), list(ativos_tickers)
+    rets, vols, ws, ativos = zip(*results)
+    return np.array(rets), np.array(vols), np.array(ws), list(ativos)
 
 def filtrar_por_composicao(ativos_simulados: list[list[str]], acoes: set, fiis: set):
     """
@@ -401,7 +401,7 @@ def plot_results(
     plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2)
     plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, edgecolors='black', linewidths=1.0, label='Sharpe Max – FII')
 
-    plt.scatter(vol_anual_ibov, ret_anual_ibov, marker='*', c='pink', s=180, edgecolors='black', linewidths=1.0, label='Ibovespa')
+    plt.scatter(vol_anual_ibov, ret_anual_ibov, marker='*', c='white', s=180, edgecolors='black', linewidths=1.0, label='Ibovespa')
 
 
     # Carteiras manuais
