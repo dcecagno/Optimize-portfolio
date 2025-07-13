@@ -70,102 +70,53 @@ def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 20
 # Funções de Simulação
 # =======================
 
-def dynamic_compound_portfolio_metrics(
-    prices: pd.DataFrame,
-    weights: np.ndarray,
-    tickers: list[str],
-    periods_per_year: int = 252
-) -> tuple[float, float]:
-    """
-    Calcula:
-      * Retorno composto anualizado: (∏(1+r_i))^(252/N) – 1
-      * Volatilidade anualizada de retornos simples: σ(r_i)*√252
+def dynamic_compound_portfolio_metrics(prices, weights, tickers):
+    prices = prices[tickers]
+    rets = prices.pct_change().dropna()
+    rets_comp = (1 + rets).prod() ** (252 / len(rets)) - 1
+    mu = rets_comp.values
+    cov = rets.cov().values * 252
+    ret = np.dot(weights, mu)
+    vol = np.sqrt(weights @ cov @ weights)
+    return ret, vol
 
-    Exclui dinamicamente ativos sem dados, normalizando os pesos restantes.
-    """
-    # 1) retornos simples diários
-    rets = prices[tickers].pct_change()
+def simulate_portfolios(prices, tickers, n_sim, min_assets, max_assets, min_w, max_w,
+                        seed, alpha_dirichlet, acoes=set(), fiis=set()):
 
-    # 2) retorno de portfólio diário com normalização por ativos válidos
-    def _wret(row):
-        valid = row.dropna()
-        if valid.empty:
-            return np.nan
-        w = np.array([weights[tickers.index(t)] for t in valid.index])
-        w /= w.sum()
-        return (valid.values * w).sum()
+    np.random.seed(seed)
 
-    port_rets = rets.apply(_wret, axis=1).dropna()
+    rets = prices.pct_change().dropna()
+    rets_comp = (1 + rets).prod() ** (252 / len(rets)) - 1
+    cov = rets.cov() * 252
 
-    # 3) retorno composto anualizado: (∏(1+r_i))^(N_ano/N_obs) – 1
-    cum = (1 + port_rets).prod()
-    n = port_rets.count()
-    ret_ann = cum ** (periods_per_year / n) - 1
-
-    # 4) vol anualizada de retorno simples
-    vol_ann = port_rets.std() * np.sqrt(periods_per_year)
-
-    return ret_ann, vol_ann
-
-def simulate_portfolios(
-    prices: pd.DataFrame,
-    tickers: list[str],
-    n_sim: int,
-    min_assets: int,
-    max_assets: int,
-    min_w: float,
-    max_w: float,
-    seed: int,
-    alpha: float = 0.3,
-    acoes: set = set(),
-    fiis: set = set()
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[list[str]]]:
-    """
-    Simula carteiras Monte Carlo usando log‐retornos para garantir convexidade,
-    retornando retorno composto anualizado e volatilidade anual no mesmo espaço.
-    """
-    # 1) log‐retornos diários e anualização exata
-    rets_log = np.log(prices / prices.shift(1)).dropna()
-    mu_log   = rets_log.mean() * 252
-    cov_log  = rets_log.cov()  * 252
-
-    rng = np.random.default_rng(seed)
-    results = []
+    sim_ret, sim_vol, sim_weights, sim_tickers = [], [], [], []
 
     for _ in range(n_sim):
-        k = rng.integers(min_assets, max_assets + 1)
-        ativos_idx = rng.choice(len(tickers), size=k, replace=False)
-        pesos = np.zeros(len(tickers))
-        pesos[ativos_idx] = rng.dirichlet(alpha * np.ones(k))
+        n_assets = np.random.randint(min_assets, max_assets + 1)
+        chosen = np.random.choice(tickers, size=n_assets, replace=False)
 
-        # respeita bounds de peso
-        if not (min_w <= pesos[ativos_idx].min() and pesos[ativos_idx].max() <= max_w):
-            continue
-
-        # 2) retorno composto anualizado exato
-        ret_log_ann = np.dot(mu_log.values, pesos)
-        ret = np.exp(ret_log_ann) - 1
-
-        # 3) volatilidade anualizada no domínio log‐retorno
-        vol = np.sqrt(pesos.T @ cov_log.values @ pesos)
-
-        ativos_tickers = [tickers[i] for i in ativos_idx]
-        ativos_set = set(ativos_tickers)
-
-        # 4) aplica restrição mista se necessário
         if acoes and fiis:
-            contem_acao = any(a in ativos_set for a in acoes)
-            contem_fii  = any(f in ativos_set for f in fiis)
-            if not (contem_acao and contem_fii):
+            has_acao = any(t in acoes for t in chosen)
+            has_fii = any(t in fiis for t in chosen)
+            if not (has_acao and has_fii):
                 continue
 
-        results.append((ret, vol, pesos, ativos_tickers))
+        weights = np.random.dirichlet([alpha_dirichlet] * n_assets)
+        weights = np.clip(weights, min_w, max_w)
+        weights = weights / weights.sum()
 
-    if not results:
-        return np.array([]), np.array([]), np.array([]), []
+        mu_vec = rets_comp[chosen].values
+        cov_mat = cov.loc[chosen, chosen].values
 
-    rets, vols, ws, ativos = zip(*results)
-    return np.array(rets), np.array(vols), np.array(ws), list(ativos)
+        port_ret = np.dot(weights, mu_vec)
+        port_vol = np.sqrt(np.dot(weights.T, np.dot(cov_mat, weights)))
+
+        sim_ret.append(port_ret)
+        sim_vol.append(port_vol)
+        sim_weights.append(weights)
+        sim_tickers.append(list(chosen))
+
+    return np.array(sim_ret), np.array(sim_vol), sim_weights, sim_tickers
 
 def filtrar_por_composicao(ativos_simulados: list[list[str]], acoes: set, fiis: set):
     """
@@ -204,25 +155,35 @@ def negative_sharpe(w, mu, cov, rf):
     vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
     return -(ret - rf) / vol
     
-def optimize_max_sharpe(mu, cov, min_w=0.0, max_w=1.0, rf=0.0): 
-    n = len(mu)
-    init = np.repeat(1/n, n)
-    bounds = [(min_w, max_w)] * n
-    cons = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
-    res = minimize(
-        negative_sharpe, 
-        init, 
-        args=(mu, cov, rf),
-        method='SLSQP', 
-        bounds=bounds, 
-        constraints=cons
-    )
-    w_opt   = res.x
-    sharpe  = -res.fun
-    success = res.success
-    msg     = res.message
+def optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w, rf):
+    from scipy.optimize import minimize
+    n_assets = len(mu_vec)
 
-    return w_opt, sharpe, success, msg
+    def neg_sharpe(w):
+        port_ret = np.dot(w, mu_vec)
+        port_vol = np.sqrt(w.T @ cov_mat @ w)
+        if port_vol == 0:
+            return np.inf
+        return -(port_ret - rf) / port_vol
+
+    bounds = [(min_w, max_w)] * n_assets
+
+    constraints = [
+        {"type": "eq", "fun": lambda w: np.sum(w) - 1}
+    ]
+
+    x0 = np.array([1 / n_assets] * n_assets)
+
+    result = minimize(neg_sharpe, x0, method="SLSQP", bounds=bounds, constraints=constraints)
+
+    if result.success:
+        w_opt = result.x
+        port_ret = np.dot(w_opt, mu_vec)
+        port_vol = np.sqrt(w_opt.T @ cov_mat @ w_opt)
+        sharpe = (port_ret - rf) / port_vol
+        return w_opt, sharpe, True, "Sucesso"
+    else:
+        return x0, 0.0, False, result.message
 
 def rebalance_weights(weights, min_w=0.03):
     """
@@ -237,101 +198,67 @@ def rebalance_weights(weights, min_w=0.03):
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
 
-def otimizar_carteira_hibrida(tickers_man: list,
-    valores_man: list,
-    ativos_sugeridos: list,
-    mu_comb: pd.Series,
-    cov_comb: pd.DataFrame,
-    percentual_adicional: float = 0.3,
-    rf: float = 0.0
-    ):
-    # 1) Calcular o "total híbrido" (= 100% da carteira manual + pct adicional)
-    total_hibrido = sum(valores_man) * (1 + percentual_adicional)
+def otimizar_carteira_hibrida(tickers_man, valores_man, ativos_sugeridos,
+                               mu_series, cov_df, percentual_adicional, rf):
+    from scipy.optimize import minimize
 
-    # 2) Pesos mínimos obrigatórios para cada ativo manual
-    pesos_minimos = {
-        t: v / total_hibrido
-        for t, v in zip(tickers_man, valores_man)
-    }
+    total_man = sum(valores_man)
+    w_man = np.array([v / total_man for v in valores_man])
 
-    if not ativos_sugeridos:
-        # monta a lista de candidatos: tudo em mu_comb, menos os manuais
-        ativos_sugeridos = [t for t in mu_comb.index if t not in tickers_man]
-
-    # 3) Combinar tickers e extrai mu/cov
-    tickers_hibrida = tickers_man + ativos_sugeridos
-    mu_h    = mu_comb.loc[tickers_hibrida].values
-    cov_h   = cov_comb.loc[tickers_hibrida, tickers_hibrida].values
-
-    # 5) Índices para pesos
-    idx_map = {t: i for i, t in enumerate(tickers_hibrida)}
-    idx_manual    = [idx_map[t] for t in tickers_man]
-    idx_sugeridos = [idx_map[t] for t in ativos_sugeridos]
-
-    # 6) Montar constraints:
-    cons = []
-    # 6.1 soma dos pesos = 1
-    cons.append({'type': 'eq', 'fun': lambda w: w.sum() - 1})
-
-    # 6.2 cada manual w[i] >= peso_minimo[i]
-    for t, min_w in pesos_minimos.items():
-        i = idx_map[t]
-        cons.append({
-            'type': 'ineq',
-            'fun': lambda w, i=i, min_w=min_w: w[i] - min_w
-        })
-
-    # 6.3 soma dos pesos de ativos_sugeridos ≤ percentual_adicional / (1 + percentual_adicional)
-    max_extra = percentual_adicional / (1 + percentual_adicional)
-    cons.append({
-        'type': 'ineq',
-        'fun': lambda w: max_extra - w[idx_sugeridos].sum()
-    })
-
-    # 7) Bounds e chute
-    n = len(tickers_hibrida)
-    bounds = [(0.0, 1.0)] * n
-    init = np.repeat(1 / n, n)
-
-    # 9) Executar otimização de Sharpe (negativo)
-    res = minimize(
-        negative_sharpe,
-        init,
-        args=(mu_h, cov_h, rf),
-        method='SLSQP',
-        bounds=bounds,
-        constraints=cons
-    )
-
-    # 8) Trata falha de otimização
-    if not res.success:
-        st.warning(
-            "Falha na otimização híbrida: "
-            f"{res.message}. "
-            "Será retornada a carteira manual original."
-        )
-        # fallback para carteira manual
-        w_man = np.array([v/sum(valores_man) for v in valores_man])
-        ret_man = np.dot(w_man, mu_h[:len(w_man)])
-        vol_man = np.sqrt(w_man.T @ cov_h[:len(w_man),:len(w_man)] @ w_man)
-        sharpe_man = (ret_man - rf) / vol_man
-        return tickers_man, w_man, ret_man, vol_man, sharpe_man
-
-    # 9) Se deu certo, monta resultados
-
-    w_hibrida = res.x
-    ret_h = w_hibrida.dot(mu_h)
-    vol_h = np.sqrt(w_hibrida.dot(cov_h).dot(w_hibrida))
-    sharpe_h = (ret_h - rf) / vol_h
-
-    limiar = 1e-6
-    ativos_nonzero = [(t, w) for t, w in zip(tickers_hibrida, w_hibrida) if w > limiar]
-    if ativos_nonzero:
-        tickers_hibrida, w_hibrida = zip(*ativos_nonzero)
+    tickers_total = tickers_man.copy()
+    if ativos_sugeridos:
+        tickers_total += ativos_sugeridos
     else:
-        tickers_hibrida, w_hibrida = [], np.array([])
+        tickers_total += [t for t in mu_series.index if t not in tickers_man]
 
-    return list(tickers_hibrida), np.array(w_hibrida), ret_h, vol_h, sharpe_h
+    tickers_total = list(dict.fromkeys(tickers_total))
+
+    mu_vec = mu_series[tickers_total].values
+    cov_mat = cov_df.loc[tickers_total, tickers_total].values
+
+    n = len(tickers_total)
+    idx_man = [tickers_total.index(t) for t in tickers_man]
+
+    peso_min = 0.0
+    peso_max = 1.0
+
+    def neg_sharpe(w):
+        port_ret = np.dot(w, mu_vec)
+        port_vol = np.sqrt(np.dot(w.T, np.dot(cov_mat, w)))
+        return -(port_ret - rf) / port_vol
+
+    bounds = [(peso_min, peso_max)] * n
+
+    def constraint_sum(w):
+        return np.sum(w) - 1.0
+
+    def constraint_preserva_pesos(w):
+        soma_manual = (1 - percentual_adicional)
+        return w[idx_man].sum() - soma_manual
+
+    x0 = np.array([0.0] * n)
+    for i in idx_man:
+        x0[i] = (1 - percentual_adicional) * w_man[idx_man.index(i)]
+    resto = 1 - np.sum(x0)
+    if resto > 0:
+        for i in range(n):
+            if i not in idx_man:
+                x0[i] = resto / (n - len(idx_man))
+
+    constraints = [
+        {"type": "eq", "fun": constraint_sum},
+        {"type": "eq", "fun": constraint_preserva_pesos}
+    ]
+
+    result = minimize(neg_sharpe, x0, method="SLSQP", bounds=bounds, constraints=constraints)
+    if result.success:
+        w_opt = result.x
+        ret = np.dot(w_opt, mu_vec)
+        vol = np.sqrt(w_opt.T @ cov_mat @ w_opt)
+        sharpe = (ret - rf) / vol
+        return tickers_total, w_opt, ret, vol, sharpe
+    else:
+        raise RuntimeError("Otimização híbrida falhou: " + result.message)
 
 def pick_best_sim(
         sim_ret, 
@@ -387,78 +314,23 @@ def convex_frontier(vols: np.ndarray, rets: np.ndarray):
         # fallback: retorna os pontos brutos
         return vol_f, ret_f, idx_front
 
-def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tickers, rf=0.0):
-    """
-    Constrói a fronteira eficiente com retorno composto anualizado.
-    Retorna: vol_interp, ret_interp, idx_sharpe_max, ponto_sharpe
-    """
-    if len(sim_vol) < 3 or len(sim_ret) < 3:
-        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
+def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tickers, rf):
 
-    pts = np.column_stack((sim_vol, sim_ret))
-    try:
-        hull = ConvexHull(pts)
-    except Exception:
-        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
+    rets = prices.pct_change().dropna()
+    mu = (1 + rets).prod() ** (252 / len(rets)) - 1
+    cov = rets.cov() * 252
 
-    # Ordena vértices por volatilidade
-    verts = sorted(hull.vertices, key=lambda i: pts[i, 0])
-
-    # Recalcula retorno composto e volatilidade com os pesos
-    dyn_vol = []
-    dyn_ret = []
-    pesos_validos = []
-    idx_validos = []
-
-    for i in verts:
-        try:
-            w = sim_weights[i]
-            ret_c, vol_c = dynamic_compound_portfolio_metrics(prices, w, tickers)
-            if not np.isnan(ret_c) and not np.isnan(vol_c):
-                dyn_ret.append(ret_c)
-                dyn_vol.append(vol_c)
-                pesos_validos.append(w)
-                idx_validos.append(i)
-        except:
-            continue
-
-    if len(dyn_ret) < 2:
-        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
-
-    # Filtra envelope superior
-    frontier = []
-    idx_front = []
-    cur_max_ret = -np.inf
-    for i, (v, r) in enumerate(zip(dyn_vol, dyn_ret)):
-        if r >= cur_max_ret:
-            frontier.append((v, r))
-            idx_front.append(i)
-            cur_max_ret = r
-
-    if len(frontier) < 2:
-        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
-
-    # Ordena os pontos da fronteira por volatilidade crescente
-    frontier_sorted = sorted(frontier, key=lambda x: x[0])
-    vol_f, ret_f = zip(*frontier_sorted)
-    vol_f = np.array(vol_f)
-    ret_f = np.array(ret_f)
-
-    # Interpolação suave
-    interpolador = PchipInterpolator(vol_f, ret_f)
-    vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
-    ret_interp = interpolador(vol_interp)
-
-    # Melhor Sharpe
-    sharpe_vals = (np.array(ret_f) - rf) / np.array(vol_f)
-    best_i = np.nanargmax(sharpe_vals)
-    idx_sharpe = idx_validos[idx_front[best_i]]
+    sharpe = (sim_ret - rf) / sim_vol
+    idx_sharpe = np.argmax(sharpe)
     w_sharpe = sim_weights[idx_sharpe]
-    ret_sharpe = ret_f[best_i]
-    vol_sharpe = vol_f[best_i]
-    sharpe_max = sharpe_vals[best_i]
+    ret_sharpe = sim_ret[idx_sharpe]
+    vol_sharpe = sim_vol[idx_sharpe]
+    sharpe_liquida = sharpe[idx_sharpe]
 
-    return vol_interp, ret_interp, idx_sharpe, (ret_sharpe, vol_sharpe, sharpe_max, w_sharpe)
+    return (
+        sim_vol, sim_ret, idx_sharpe,
+        (ret_sharpe, vol_sharpe, sharpe_liquida, w_sharpe)
+    )
 
 # =======================
 # Funções de Plotagem
@@ -1563,7 +1435,7 @@ def main():
         cov_fii = rets_fii.cov() * 252
 
         rets_comb = prices_comb.pct_change().dropna()
-        mu_comb = rets_comb.mean() * 252
+        mu_comb = (1 + rets_comb).prod() ** (252 / len(rets_comb)) - 1
         cov_comb = rets_comb.cov() * 252
                 
         rets_ibov = ibovespa.pct_change().dropna()
