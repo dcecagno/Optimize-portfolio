@@ -345,15 +345,21 @@ def pick_best_sim(
 def convex_frontier(vols: np.ndarray, rets: np.ndarray):
     """
     Retorna (vol_interp, ret_interp, idx_front) com interpolação suave da fronteira eficiente.
+    Se houver menos de 2 pontos no envelope superior, retorna os pontos brutos.
     """
-    pts = np.column_stack((vols, rets))
-    hull = ConvexHull(pts)
-    verts = hull.vertices
+    if len(vols) < 3 or len(rets) < 3:
+        return np.array([]), np.array([]), []
 
-    # Ordena os vértices por volatilidade crescente
+    pts = np.column_stack((vols, rets))
+    
+    try:
+        hull = ConvexHull(pts)
+    except Exception:
+        return np.array([]), np.array([]), []
+
+    verts = hull.vertices
     verts = sorted(verts, key=lambda i: pts[i, 0])
 
-    # Filtra apenas os pontos do envelope superior (retorno crescente)
     frontier = []
     idx_front = []
     cur_max_ret = -np.inf
@@ -364,16 +370,23 @@ def convex_frontier(vols: np.ndarray, rets: np.ndarray):
             idx_front.append(i)
             cur_max_ret = ret
 
+    if len(frontier) < 2:
+        vol_f, ret_f = zip(*frontier) if frontier else ([], [])
+        return np.array(vol_f), np.array(ret_f), idx_front
+
     vol_f, ret_f = zip(*frontier)
     vol_f = np.array(vol_f)
     ret_f = np.array(ret_f)
 
-    # Interpolação suave com PCHIP
-    interpolador = PchipInterpolator(vol_f, ret_f)
-    vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
-    ret_interp = interpolador(vol_interp)
+    try:
+        interpolador = PchipInterpolator(vol_f, ret_f)
+        vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
+        ret_interp = interpolador(vol_interp)
+        return vol_interp, ret_interp, idx_front
+    except Exception:
+        # fallback: retorna os pontos brutos
+        return vol_f, ret_f, idx_front
 
-    return vol_interp, ret_interp, idx_front
 
 # =======================
 # Funções de Plotagem
