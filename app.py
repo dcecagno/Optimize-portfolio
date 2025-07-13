@@ -398,7 +398,7 @@ def plot_results(
     plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2)
     plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, edgecolors='black', linewidths=1.0, label='Sharpe Max – FII')
 
-    plt.scatter(vol_anual_ibov, ret_anual_ibov, marker='*', c='brown', s=180, edgecolors='black', linewidths=1.0, label='Ibovespa')
+    plt.scatter(vol_anual_ibov, ret_anual_ibov, marker='*', c='pink', s=180, edgecolors='black', linewidths=1.0, label='Ibovespa')
 
 
     # Carteiras manuais
@@ -1542,13 +1542,13 @@ def main():
 
         # AÇÕES
         if len(sim_vol_aco) > 0:
-            # 1) Extraia fronteira estática (usamos sim_vol_aco e sim_ret_aco diretamente)
+            # 1) Fronteira estática (vol_log, ret_compound aprox)
             cf_vol_aco, cf_ret_aco, cf_idx_aco = convex_frontier(
                 sim_vol_aco,
-                sim_ret_aco  # já em mu_anual aproximado de retorno composto
+                sim_ret_aco
             )
 
-            # 2) Calcule fronteira “verdadeira” em composto apenas nos vértices
+            # 2) Fronteira “verdadeira” em composto nos vértices
             dyn_vol_aco = []
             dyn_ret_aco = []
             for idx in cf_idx_aco:
@@ -1558,11 +1558,13 @@ def main():
                 )
                 dyn_ret_aco.append(ret_c)
                 dyn_vol_aco.append(vol_c)
-
             dyn_ret_aco = np.array(dyn_ret_aco)
             dyn_vol_aco = np.array(dyn_vol_aco)
 
-            # 3) Encontre o best‐Sharpe sobre a curva dinâmica
+            # 3) Substitui a fronteira estática pela dinâmica
+            vol_lin_aco, ret_lin_aco = dyn_vol_aco, dyn_ret_aco
+
+            # 4) Best‐Sharpe sobre a curva dinâmica
             sh_aco_dyn = (dyn_ret_aco - rf) / dyn_vol_aco
             best_i    = np.nanargmax(sh_aco_dyn)
 
@@ -1573,9 +1575,10 @@ def main():
         else:
             cf_vol_aco = cf_ret_aco = np.array([])
             w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
+            vol_lin_aco = ret_lin_aco = np.array([])
 
 
-        # FIIs
+        # ——— FIIs ———
         if len(sim_vol_fii) > 0:
             cf_vol_fii, cf_ret_fii, cf_idx_fii = convex_frontier(
                 sim_vol_fii,
@@ -1591,9 +1594,11 @@ def main():
                 )
                 dyn_ret_fii.append(ret_c)
                 dyn_vol_fii.append(vol_c)
-
             dyn_ret_fii = np.array(dyn_ret_fii)
             dyn_vol_fii = np.array(dyn_vol_fii)
+
+            # Substitui fronteira estática pela dinâmica
+            vol_lin_fii, ret_lin_fii = dyn_vol_fii, dyn_ret_fii
 
             sh_fii_dyn = (dyn_ret_fii - rf) / dyn_vol_fii
             best_i     = np.nanargmax(sh_fii_dyn)
@@ -1605,12 +1610,13 @@ def main():
         else:
             cf_vol_fii = cf_ret_fii = np.array([])
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
+            vol_lin_fii = ret_lin_fii = np.array([])
 
 
 
+        # ——— COMBINADO (Ações + FIIs) ———
         tickers_comb = acoes_validos + fii_validos
 
-        # COMBINADO (continuação)
         if len(sim_vol_misto) > 0:
             cf_vol_comb, cf_ret_comb, cf_idx_comb = convex_frontier(
                 sim_vol_misto,
@@ -1626,9 +1632,11 @@ def main():
                 )
                 dyn_ret_comb.append(ret_c)
                 dyn_vol_comb.append(vol_c)
-
             dyn_ret_comb = np.array(dyn_ret_comb)
             dyn_vol_comb = np.array(dyn_vol_comb)
+
+            # Substitui fronteira estática pela dinâmica
+            vol_lin_comb, ret_lin_comb = dyn_vol_comb, dyn_ret_comb
 
             sh_comb_dyn = (dyn_ret_comb - rf) / dyn_vol_comb
             best_i     = np.nanargmax(sh_comb_dyn)
@@ -1640,6 +1648,8 @@ def main():
         else:
             cf_vol_comb = cf_ret_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+            vol_lin_comb = ret_lin_comb = np.array([])
+
 
         
         tickers_man = normalizar_tickers(tickers_man)
@@ -1863,12 +1873,13 @@ def main():
 
         # Plotagem
         plot_results(
-            sim_vol_aco, sim_ret_aco, cf_vol_aco, cf_ret_aco, vol_sh_aco, ret_sh_aco,
-            sim_vol_fii, sim_ret_fii, cf_vol_fii, cf_ret_fii, vol_sh_fii, ret_sh_fii,
-            sim_vol_misto, sim_ret_misto, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
+            sim_vol_aco,  sim_ret_aco,   vol_lin_aco,  ret_lin_aco,  vol_sh_aco,  ret_sh_aco,
+            sim_vol_fii,  sim_ret_fii,   vol_lin_fii,  ret_lin_fii,  vol_sh_fii,  ret_sh_fii,
+            sim_vol_misto, sim_ret_misto, vol_lin_comb, ret_lin_comb, vol_sh_comb, ret_sh_comb,
             vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida,
             tickers_man, ret_anual_ibov, vol_anual_ibov
         )
+
         
         cenarios = [
         ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_liquida_aco, ret_sh_aco, vol_sh_aco),
