@@ -69,37 +69,42 @@ def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 20
 # Funções de Simulação
 # =======================
 
-def dynamic_log_portfolio_metrics(
+def dynamic_compound_portfolio_metrics(
     prices: pd.DataFrame,
     weights: np.ndarray,
     tickers: list[str],
     periods_per_year: int = 252
 ) -> tuple[float, float]:
     """
-    Retorno e volatilidade anualizados usando log‐retornos,
-    excluindo dinamicamente ativos sem dados e normalizando pesos.
-    """
-    # 1) log‐retornos
-    rets_log = np.log(prices[tickers] / prices[tickers].shift(1))
+    Calcula:
+      * Retorno composto anualizado: (∏(1+r_i))^(252/N) – 1
+      * Volatilidade anualizada de retornos simples: σ(r_i)*√252
 
-    # 2) return ponderado por período
-    def _wlog(row):
+    Exclui dinamicamente ativos sem dados, normalizando os pesos restantes.
+    """
+    # 1) retornos simples diários
+    rets = prices[tickers].pct_change()
+
+    # 2) retorno de portfólio diário com normalização por ativos válidos
+    def _wret(row):
         valid = row.dropna()
         if valid.empty:
             return np.nan
         w = np.array([weights[tickers.index(t)] for t in valid.index])
-        w = w / w.sum()
+        w /= w.sum()
         return (valid.values * w).sum()
 
-    port_rets = rets_log.apply(_wlog, axis=1).dropna()
+    port_rets = rets.apply(_wret, axis=1).dropna()
 
-    # 3) média * anualização
-    mu_ann = port_rets.mean() * periods_per_year
+    # 3) retorno composto anualizado: (∏(1+r_i))^(N_ano/N_obs) – 1
+    cum = (1 + port_rets).prod()
+    n = port_rets.count()
+    ret_ann = cum ** (periods_per_year / n) - 1
 
-    # 4) vol anualizada
+    # 4) vol anualizada de retorno simples
     vol_ann = port_rets.std() * np.sqrt(periods_per_year)
 
-    return mu_ann, vol_ann
+    return ret_ann, vol_ann
 
 def simulate_portfolios(
     prices: pd.DataFrame,
@@ -119,7 +124,7 @@ def simulate_portfolios(
     Simula carteiras com restrições de cardinalidade e peso.
     Agora também retorna os tickers sorteados em cada simulação.
     """
-    rets = np.log(prices / prices.shift(1)).dropna()
+    rets = prices.pct_change().dropna()
     mu = rets.mean() * 252
     cov = rets.cov() * 252
     rng = np.random.default_rng(seed)
@@ -360,13 +365,13 @@ def convex_frontier(vols: np.ndarray, rets: np.ndarray):
 # =======================
 
 def plot_results(
-    sim_vol_aco, sim_ret_aco_s,
+    sim_vol_aco, sim_ret_aco,
     vol_lin_aco, ret_lin_aco,
     vol_sh_aco, ret_sh_aco,
-    sim_vol_fii, sim_ret_fii_s,
+    sim_vol_fii, sim_ret_fii,
     vol_lin_fii, ret_lin_fii,
     vol_sh_fii, ret_sh_fii,
-    sim_vol_comb, sim_ret_comb_s,
+    sim_vol_comb, sim_ret_comb,
     vol_lin_comb, ret_lin_comb,
     vol_sh_comb, ret_sh_comb,
     vol_man,     ret_man,
@@ -379,17 +384,17 @@ def plot_results(
     plt.figure(figsize=(12,8))
 
     # Monte Carlo e Fronteiras
-    plt.scatter(sim_vol_comb, sim_ret_comb_s, s=8, alpha=0.12, c='red')
+    plt.scatter(sim_vol_comb, sim_ret_comb, s=8, alpha=0.12, c='red')
     plt.plot(vol_lin_comb, ret_lin_comb, '--', c='red', lw=2)
     plt.scatter(vol_sh_comb, ret_sh_comb, marker='*', c='red', s=180, edgecolors='black', linewidths=1.0, label='Sharpe Max – Ações + FII')
 
 
-    plt.scatter(sim_vol_aco, sim_ret_aco_s, s=8, alpha=0.12, c='blue')
+    plt.scatter(sim_vol_aco, sim_ret_aco, s=8, alpha=0.12, c='blue')
     plt.plot(vol_lin_aco, ret_lin_aco, '--', c='blue', lw=2)
     plt.scatter(vol_sh_aco, ret_sh_aco, marker='*', c='blue', s=180, edgecolors='black', linewidths=1.0, label='Sharpe Max – Ações')
 
 
-    plt.scatter(sim_vol_fii, sim_ret_fii_s, s=8, alpha=0.12, c='green')
+    plt.scatter(sim_vol_fii, sim_ret_fii, s=8, alpha=0.12, c='green')
     plt.plot(vol_lin_fii, ret_lin_fii, '--', c='green', lw=2)
     plt.scatter(vol_sh_fii, ret_sh_fii, marker='*', c='green', s=180, edgecolors='black', linewidths=1.0, label='Sharpe Max – FII')
 
@@ -418,8 +423,8 @@ def plot_results(
         )
 
     plt.xlabel("Volatilidade Anualizada")
-    plt.ylabel("Retorno Anualizado")
-    plt.title("Fronteira Eficiente – Ações x FIIs x (Ações + FII)")
+    plt.ylabel("Retorno Composto Anualizado")
+    plt.title("Fronteira Eficiente (Retorno Composto Anualizado)")
     plt.legend()
     plt.grid(True)
     ax = plt.gca()
@@ -428,8 +433,8 @@ def plot_results(
     
     # Protege contra arrays vazios
     vols = [arr.max() for arr in [sim_vol_aco, sim_vol_fii, sim_vol_comb] if arr.size > 0]
-    rets_max = [arr.max() for arr in [sim_ret_aco_s, sim_ret_fii_s, sim_ret_comb_s] if arr.size > 0]
-    rets_min = [arr.min() for arr in [sim_ret_aco_s, sim_ret_fii_s, sim_ret_comb_s] if arr.size > 0]
+    rets_max = [arr.max() for arr in [sim_ret_aco, sim_ret_fii, sim_ret_comb] if arr.size > 0]
+    rets_min = [arr.min() for arr in [sim_ret_aco, sim_ret_fii, sim_ret_comb] if arr.size > 0]
 
     if vols and rets_max and rets_min:
         max_vol = max(vols)
@@ -1450,16 +1455,14 @@ def main():
         prices_fii  = prices_read[fii_validos]
         prices_comb = prices_read[acoes_validos + fii_validos]
 
-        # Usa log-retornos para garantir consistência com retorno composto
-        rets_aco = np.log(prices_aco / prices_aco.shift(1)).dropna()
-        mu_aco = rets_aco.mean() * 252
+        # Usa retorno simples composto (pct_change) para tudo
+        rets_aco  = prices_aco.pct_change().dropna()
         cov_aco = rets_aco.cov() * 252
 
-        rets_fii = np.log(prices_fii / prices_fii.shift(1)).dropna()
-        mu_fii = rets_fii.mean() * 252
+        rets_fii  = prices_fii.pct_change().dropna()
         cov_fii = rets_fii.cov() * 252
 
-        rets_comb = np.log(prices_comb / prices_comb.shift(1)).dropna()
+        rets_comb = prices_comb.pct_change().dropna()
         mu_comb = rets_comb.mean() * 252
         cov_comb = rets_comb.cov() * 252
                 
@@ -1539,29 +1542,27 @@ def main():
 
         # AÇÕES
         if len(sim_vol_aco) > 0:
-            # 1) log → composto
-            sim_ret_aco_s = np.exp(sim_ret_aco) - 1
-
-            # 2) saque a fronteira estática: volatilidade, retorno e índices
+            # 1) Extraia fronteira estática (usamos sim_vol_aco e sim_ret_aco diretamente)
             cf_vol_aco, cf_ret_aco, cf_idx_aco = convex_frontier(
                 sim_vol_aco,
-                sim_ret_aco_s
+                sim_ret_aco  # já em mu_anual aproximado de retorno composto
             )
 
-            # 3) constrói a fronteira dinâmica só nos vértices
+            # 2) Calcule fronteira “verdadeira” em composto apenas nos vértices
             dyn_vol_aco = []
             dyn_ret_aco = []
             for idx in cf_idx_aco:
                 w = sim_pesos_aco[idx]
-                mu_d, vol_d = dynamic_log_portfolio_metrics(
+                ret_c, vol_c = dynamic_compound_portfolio_metrics(
                     prices_aco, w, acoes_validos
                 )
-                dyn_vol_aco.append(vol_d)
-                dyn_ret_aco.append(mu_d)
-            dyn_vol_aco = np.array(dyn_vol_aco)
-            dyn_ret_aco = np.array(dyn_ret_aco)
+                dyn_ret_aco.append(ret_c)
+                dyn_vol_aco.append(vol_c)
 
-            # 4) escolhe o best‐Sharpe na fronteira dinâmica
+            dyn_ret_aco = np.array(dyn_ret_aco)
+            dyn_vol_aco = np.array(dyn_vol_aco)
+
+            # 3) Encontre o best‐Sharpe sobre a curva dinâmica
             sh_aco_dyn = (dyn_ret_aco - rf) / dyn_vol_aco
             best_i    = np.nanargmax(sh_aco_dyn)
 
@@ -1569,26 +1570,30 @@ def main():
             ret_sh_aco         = dyn_ret_aco[best_i]
             vol_sh_aco         = dyn_vol_aco[best_i]
             sharpe_liquida_aco = sh_aco_dyn[best_i]
-
         else:
-            sim_ret_aco_s = np.array([])
             cf_vol_aco = cf_ret_aco = np.array([])
             w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
 
+
         # FIIs
         if len(sim_vol_fii) > 0:
-            sim_ret_fii_s = np.exp(sim_ret_fii) - 1
-            cf_vol_fii, cf_ret_fii, cf_idx_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
+            cf_vol_fii, cf_ret_fii, cf_idx_fii = convex_frontier(
+                sim_vol_fii,
+                sim_ret_fii
+            )
 
             dyn_vol_fii = []
             dyn_ret_fii = []
             for idx in cf_idx_fii:
                 w = sim_pesos_fii[idx]
-                mu_d, vol_d = dynamic_log_portfolio_metrics(prices_fii, w, fii_validos)
-                dyn_vol_fii.append(vol_d)
-                dyn_ret_fii.append(mu_d)
-            dyn_vol_fii = np.array(dyn_vol_fii)
+                ret_c, vol_c = dynamic_compound_portfolio_metrics(
+                    prices_fii, w, fii_validos
+                )
+                dyn_ret_fii.append(ret_c)
+                dyn_vol_fii.append(vol_c)
+
             dyn_ret_fii = np.array(dyn_ret_fii)
+            dyn_vol_fii = np.array(dyn_vol_fii)
 
             sh_fii_dyn = (dyn_ret_fii - rf) / dyn_vol_fii
             best_i     = np.nanargmax(sh_fii_dyn)
@@ -1598,40 +1603,43 @@ def main():
             vol_sh_fii          = dyn_vol_fii[best_i]
             sharpe_liquida_fii  = sh_fii_dyn[best_i]
         else:
-            sim_ret_fii_s = np.array([])
             cf_vol_fii = cf_ret_fii = np.array([])
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
+
 
 
         tickers_comb = acoes_validos + fii_validos
 
         # COMBINADO (continuação)
         if len(sim_vol_misto) > 0:
-            sim_ret_comb_s = np.exp(sim_ret_misto) - 1
-            cf_vol_comb, cf_ret_comb, cf_idx_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
+            cf_vol_comb, cf_ret_comb, cf_idx_comb = convex_frontier(
+                sim_vol_misto,
+                sim_ret_misto
+            )
 
             dyn_vol_comb = []
             dyn_ret_comb = []
             for idx in cf_idx_comb:
                 w = sim_pesos_misto[idx]
-                mu_d, vol_d = dynamic_log_portfolio_metrics(prices_comb, w, tickers_comb)
-                dyn_vol_comb.append(vol_d)
-                dyn_ret_comb.append(mu_d)
-            dyn_vol_comb = np.array(dyn_vol_comb)
+                ret_c, vol_c = dynamic_compound_portfolio_metrics(
+                    prices_comb, w, tickers_comb
+                )
+                dyn_ret_comb.append(ret_c)
+                dyn_vol_comb.append(vol_c)
+
             dyn_ret_comb = np.array(dyn_ret_comb)
+            dyn_vol_comb = np.array(dyn_vol_comb)
 
             sh_comb_dyn = (dyn_ret_comb - rf) / dyn_vol_comb
-            best_i      = np.nanargmax(sh_comb_dyn)
+            best_i     = np.nanargmax(sh_comb_dyn)
 
             w_sharpe_comb        = sim_pesos_misto[cf_idx_comb[best_i]]
             ret_sh_comb          = dyn_ret_comb[best_i]
             vol_sh_comb          = dyn_vol_comb[best_i]
             sharpe_liquida_comb  = sh_comb_dyn[best_i]
         else:
-            sim_ret_comb_s = np.array([])
             cf_vol_comb = cf_ret_comb = np.array([])
-            w_sharpe_comb = np.array([])
-            ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+            w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
 
         
         tickers_man = normalizar_tickers(tickers_man)
@@ -1787,7 +1795,6 @@ def main():
                         percentual_adicional, # 6) float em [0,1]
                         rf                    # 7) taxa livre de risco
                     )
-                ret_hibrida_comp = np.exp(ret_hibrida) - 1
                 cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
 
             except Exception as e:
@@ -1804,39 +1811,41 @@ def main():
         # Para ações: usa mu_aco e cov_aco
         for t in acoes_validos:
             try:
-                mu = np.exp(mu_aco[t]) - 1
-                vol = np.sqrt(cov_aco.loc[t, t])
-                if np.isnan(mu) or np.isnan(vol) or vol == 0:
+                ret_i, vol_i = dynamic_compound_portfolio_metrics(
+                    prices_aco, np.array([1.0]), [t]
+                )
+                if np.isnan(ret_i) or np.isnan(vol_i) or vol_i == 0:
                     continue
-                sharpe = (mu - rf) / vol
+                sharpe_i = (ret_i - rf) / vol_i
                 stats.append({
-                    "Ticker": t.replace(".SA", ""),
-                    "Ativo": "Ação",
-                    "Sharpe": sharpe,
-                    "Retorno": mu,
-                    "Volatilidade": vol
+                    "Ticker":      t.replace(".SA", ""),
+                    "Ativo":       "Ação",
+                    "Sharpe":      sharpe_i,
+                    "Retorno":     ret_i,
+                    "Volatilidade": vol_i
                 })
-            except Exception:
+            except:
                 continue
 
-
-        # Para FIIs: usa mu_fii e cov_fii
+        # Para FIIs
         for t in fii_validos:
             try:
-                mu = np.exp(mu_fii[t]) - 1
-                vol = np.sqrt(cov_fii.loc[t, t])
-                if np.isnan(mu) or np.isnan(vol) or vol == 0:
+                ret_i, vol_i = dynamic_compound_portfolio_metrics(
+                    prices_fii, np.array([1.0]), [t]
+                )
+                if np.isnan(ret_i) or np.isnan(vol_i) or vol_i == 0:
                     continue
-                sharpe = (mu - rf) / vol
+                sharpe_i = (ret_i - rf) / vol_i
                 stats.append({
-                    "Ticker": t.replace(".SA", ""),
-                    "Ativo":  "FII",
-                    "Sharpe": sharpe,
-                    "Retorno": mu,
-                    "Volatilidade": vol
+                    "Ticker":      t.replace(".SA", ""),
+                    "Ativo":       "FII",
+                    "Sharpe":      sharpe_i,
+                    "Retorno":     ret_i,
+                    "Volatilidade": vol_i
                 })
-            except Exception:
+            except:
                 continue
+
 
         # Converte em DataFrame e ordena
         df_stats = pd.DataFrame(stats) \
@@ -1848,10 +1857,10 @@ def main():
 
         # Plotagem
         plot_results(
-            sim_vol_aco, sim_ret_aco_s, cf_vol_aco, cf_ret_aco, vol_sh_aco, ret_sh_aco,
-            sim_vol_fii, sim_ret_fii_s, cf_vol_fii, cf_ret_fii, vol_sh_fii, ret_sh_fii,
-            sim_vol_misto, sim_ret_comb_s, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
-            vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida_comp,
+            sim_vol_aco, sim_ret_aco, cf_vol_aco, cf_ret_aco, vol_sh_aco, ret_sh_aco,
+            sim_vol_fii, sim_ret_fii, cf_vol_fii, cf_ret_fii, vol_sh_fii, ret_sh_fii,
+            sim_vol_misto, sim_ret_misto, cf_vol_comb, cf_ret_comb, vol_sh_comb, ret_sh_comb,
+            vol_man, ret_man, vol_opt_manual, ret_opt_manual, vol_hibrida, ret_hibrida,
             tickers_man, ret_anual_ibov, vol_anual_ibov
         )
         
@@ -1871,7 +1880,7 @@ def main():
             )
             cenarios.append(
                 (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)",
-                w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida_comp, vol_hibrida)
+                w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida)
             )
         else:
             st.info("Nenhum ticker válido na Carteira Manual → pulando cenário manual.")
@@ -1895,10 +1904,10 @@ def main():
 
             if nome == "Carteira de Sharpe Máximo – AÇÕES E FIIs":
                 # acha índices de ações e FIIs na carteira combinada
-                idx_acoes = [ticks.index(t) for t in acoes_validos if t in ticks]
-                idx_fii   = [ticks.index(t) for t in fii_validos   if t in ticks]
+                idx_aco = [ticks.index(t) for t in acoes_validos if t in ticks]
+                idx_fii = [ticks.index(t) for t in fii_validos   if t in ticks]
 
-                pct_acoes = w[idx_acoes].sum()
+                pct_acoes = w[idx_aco].sum()
                 pct_fii   = w[idx_fii].sum()
 
                 st.markdown("**Composição por classe (Máx. Sharpe – Comb.):**")
