@@ -319,23 +319,74 @@ def convex_frontier(vols: np.ndarray, rets: np.ndarray):
         # fallback: retorna os pontos brutos
         return vol_f, ret_f, idx_front
 
-def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tickers, rf):
+def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tickers, rf=0.0):
+    """
+    Constrói a fronteira eficiente com retorno composto anualizado.
+    Retorna: vol_interp, ret_interp, idx_sharpe_max, ponto_sharpe
+    """
+    if len(sim_vol) < 3 or len(sim_ret) < 3:
+        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
 
-    rets = prices.pct_change().dropna()
-    mu = (1 + rets).prod() ** (252 / len(rets)) - 1
-    cov = rets.cov() * 252
+    pts = np.column_stack((sim_vol, sim_ret))
+    try:
+        hull = ConvexHull(pts)
+    except Exception:
+        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
 
-    sharpe = (sim_ret - rf) / sim_vol
-    idx_sharpe = np.argmax(sharpe)
+    verts = sorted(hull.vertices, key=lambda i: pts[i, 0])
+
+    dyn_vol = []
+    dyn_ret = []
+    idx_validos = []
+
+    for i in verts:
+        try:
+            w = sim_weights[i]
+            ret_c, vol_c = dynamic_compound_portfolio_metrics(prices, w, tickers)
+            if not np.isnan(ret_c) and not np.isnan(vol_c):
+                dyn_ret.append(ret_c)
+                dyn_vol.append(vol_c)
+                idx_validos.append(i)
+        except:
+            continue
+
+    if len(dyn_ret) < 2:
+        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
+
+    # Filtra envelope superior
+    frontier = []
+    idx_front = []
+    cur_max_ret = -np.inf
+    for i, (v, r) in enumerate(zip(dyn_vol, dyn_ret)):
+        if r >= cur_max_ret:
+            frontier.append((v, r))
+            idx_front.append(i)
+            cur_max_ret = r
+
+    if len(frontier) < 2:
+        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
+
+    # Ordena por volatilidade
+    frontier_sorted = sorted(frontier, key=lambda x: x[0])
+    vol_f, ret_f = zip(*frontier_sorted)
+    vol_f = np.array(vol_f)
+    ret_f = np.array(ret_f)
+
+    # Interpolação suave
+    interpolador = PchipInterpolator(vol_f, ret_f)
+    vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
+    ret_interp = interpolador(vol_interp)
+
+    # Melhor Sharpe
+    sharpe_vals = (ret_f - rf) / vol_f
+    best_i = np.argmax(sharpe_vals)
+    idx_sharpe = idx_validos[idx_front[best_i]]
     w_sharpe = sim_weights[idx_sharpe]
-    ret_sharpe = sim_ret[idx_sharpe]
-    vol_sharpe = sim_vol[idx_sharpe]
-    sharpe_liquida = sharpe[idx_sharpe]
+    ret_sharpe = ret_f[best_i]
+    vol_sharpe = vol_f[best_i]
+    sharpe_max = sharpe_vals[best_i]
 
-    return (
-        sim_vol, sim_ret, idx_sharpe,
-        (ret_sharpe, vol_sharpe, sharpe_liquida, w_sharpe)
-    )
+    return vol_interp, ret_interp, idx_sharpe, (ret_sharpe, vol_sharpe, sharpe_max, w_sharpe)
 
 # =======================
 # Funções de Plotagem
