@@ -69,10 +69,6 @@ def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 20
 # Funções de Simulação
 # =======================
 
-# ==============================================
-# 1) Função para performance dinâmica de carteira
-# ==============================================
-
 def dynamic_portfolio_metrics(
     prices: pd.DataFrame,
     weights: np.ndarray,
@@ -90,11 +86,9 @@ def dynamic_portfolio_metrics(
         return (valid.values * w).sum()
 
     port_rets = rets.apply(_wret, axis=1).dropna()
-
     compounded = (1 + port_rets).prod()
     n = port_rets.count()
     annual_return = compounded ** (periods_per_year / n) - 1
-
     annual_vol = port_rets.std() * np.sqrt(periods_per_year)
     return annual_return, annual_vol
 
@@ -1568,6 +1562,7 @@ def main():
             cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
 
             w_sharpe_comb, *_ = pick_best_sim(sim_ret_misto, sim_vol_misto, sim_pesos_misto, rf)
+            # ← aqui estava o bug: antes você não atribuiu o retorno da função às variáveis locais
             ret_sh_comb, vol_sh_comb = dynamic_portfolio_metrics(
                 prices_comb, w_sharpe_comb, tickers_comb, periods_per_year=252
             )
@@ -1576,7 +1571,6 @@ def main():
             sim_ret_comb_s = np.array([])
             cf_vol_comb = cf_ret_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
-
 
         tickers_comb = acoes_validos + fii_validos
         tickers_man = normalizar_tickers(tickers_man)
