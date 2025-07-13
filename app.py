@@ -116,6 +116,7 @@ def simulate_portfolios(
     max_w: float,
     seed: int,
     alpha: float = 0.3,
+    periods_per_year: int = 252,
     acoes: set = set(),
     fiis: set = set()
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[list[str]]]:
@@ -140,20 +141,22 @@ def simulate_portfolios(
         if not (min_w <= pesos[ativos_idx].min() and pesos[ativos_idx].max() <= max_w):
             continue
 
-        ret = np.dot(mu.values, pesos)
+        # retorno simples anual aproximado
+        ret_simple_ann = np.dot(mu.values, pesos)
+        # compounding anual exato sobre o simples anual
+        ret = (1 + ret_simple_ann/periods_per_year)**periods_per_year - 1
+
         vol = np.sqrt(pesos.T @ cov.values @ pesos)
         ativos_tickers = [tickers[i] for i in ativos_idx]
         # Verifica se a carteira contém pelo menos uma ação e um FII
         ativos_set = set(ativos_tickers)
         contem_acao = any(a in ativos_set for a in acoes)
         contem_fii = any(f in ativos_set for f in fiis)
-
         
         # Aplica a restrição de carteira mista apenas se ambos os conjuntos forem não vazios
         if acoes and fiis:
             if not (contem_acao and contem_fii):
                 continue # pula carteiras que não são mistas
-
 
         results.append((ret, vol, pesos, ativos_tickers))
 
