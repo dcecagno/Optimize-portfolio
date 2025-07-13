@@ -1525,6 +1525,8 @@ def main():
         sim_ret_misto = filtrar_por_indices(st.session_state.sim_ret_comb, idx_misto)
         sim_vol_misto = filtrar_por_indices(st.session_state.sim_vol_comb, idx_misto)
         sim_pesos_misto = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_misto)
+        
+        tickers_comb = acoes_validos + fii_validos
 
         # AÇÕES
         if len(sim_vol_aco) > 0:
@@ -1562,14 +1564,17 @@ def main():
             cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
 
             w_sharpe_comb, *_ = pick_best_sim(
-                sim_ret_misto, sim_vol_misto, sim_pesos_misto, rf
+                sim_ret_misto,
+                sim_vol_misto,
+                sim_pesos_misto,
+                rf
             )
 
-            # ← Chamada CORRETA, atribuindo o retorno a ret_sh_comb e vol_sh_comb
-            ret_sh_aco, vol_sh_aco = dynamic_portfolio_metrics(
-                prices_aco,
-                w_sharpe_aco,
-                acoes_validos
+            # ← Chamada CORRETA para o combinado
+            ret_sh_comb, vol_sh_comb = dynamic_portfolio_metrics(
+                prices_comb,
+                w_sharpe_comb,
+                tickers_comb
             )
             sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
         else:
@@ -1578,7 +1583,6 @@ def main():
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
 
 
-        tickers_comb = acoes_validos + fii_validos
         tickers_man = normalizar_tickers(tickers_man)
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
