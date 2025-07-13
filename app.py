@@ -72,45 +72,30 @@ def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 20
 # ==============================================
 # 1) Função para performance dinâmica de carteira
 # ==============================================
+
 def dynamic_portfolio_metrics(
     prices: pd.DataFrame,
     weights: np.ndarray,
     tickers: list[str],
     periods_per_year: int = 252
 ) -> tuple[float, float]:
-    """
-    Calcula retorno e volatilidade anualizados de uma carteira,
-    redistribuindo o peso entre os ativos disponíveis em cada período.
-
-    prices: DataFrame de preços (índice datetime, colunas = tickers)
-    weights: vetor de pesos original (soma 1, alinhado a `tickers`)
-    tickers: lista de colunas em `prices` que correspondem aos pesos
-    periods_per_year: fator de anualização (252 dias, 12 meses, etc)
-    """
-    # 1) Retornos simples diários (pct_change mantém NaN onde faltam dados)
     rets = prices[tickers].pct_change()
 
-    # 2) Para cada linha (dia), computa o retorno ponderado só sobre ativos disponíveis
-    def weighted_return(row):
+    def _wret(row):
         valid = row.dropna()
         if valid.empty:
             return np.nan
-        # extrai pesos originais dos tickers disponíveis
         w = np.array([weights[tickers.index(t)] for t in valid.index])
-        # normaliza para somar 1 naquele dia
         w = w / w.sum()
         return (valid.values * w).sum()
 
-    port_rets = rets.apply(weighted_return, axis=1).dropna()
+    port_rets = rets.apply(_wret, axis=1).dropna()
 
-    # 3) Retorno anualizado via capitalização
     compounded = (1 + port_rets).prod()
     n = port_rets.count()
     annual_return = compounded ** (periods_per_year / n) - 1
 
-    # 4) Volatilidade anualizada
     annual_vol = port_rets.std() * np.sqrt(periods_per_year)
-
     return annual_return, annual_vol
 
 def simulate_portfolios(
@@ -1552,9 +1537,7 @@ def main():
             sim_ret_aco_s = np.exp(sim_ret_aco) - 1
             cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
 
-            w_sharpe_aco, _, _, _ = pick_best_sim(
-                sim_ret_aco, sim_vol_aco, sim_pesos_aco, rf
-            )
+            w_sharpe_aco, *_ = pick_best_sim(sim_ret_aco, sim_vol_aco, sim_pesos_aco, rf)
             ret_sh_aco, vol_sh_aco = dynamic_portfolio_metrics(
                 prices_aco, w_sharpe_aco, acoes_validos, periods_per_year=252
             )
@@ -1569,9 +1552,7 @@ def main():
             sim_ret_fii_s = np.exp(sim_ret_fii) - 1
             cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
 
-            w_sharpe_fii, _, _, _ = pick_best_sim(
-                sim_ret_fii, sim_vol_fii, sim_pesos_fii, rf
-            )
+            w_sharpe_fii, *_ = pick_best_sim(sim_ret_fii, sim_vol_fii, sim_pesos_fii, rf)
             ret_sh_fii, vol_sh_fii = dynamic_portfolio_metrics(
                 prices_fii, w_sharpe_fii, fii_validos, periods_per_year=252
             )
@@ -1586,9 +1567,7 @@ def main():
             sim_ret_comb_s = np.exp(sim_ret_misto) - 1
             cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
 
-            w_sharpe_comb, _, _, _ = pick_best_sim(
-                sim_ret_misto, sim_vol_misto, sim_pesos_misto, rf
-            )
+            w_sharpe_comb, *_ = pick_best_sim(sim_ret_misto, sim_vol_misto, sim_pesos_misto, rf)
             ret_sh_comb, vol_sh_comb = dynamic_portfolio_metrics(
                 prices_comb, w_sharpe_comb, tickers_comb, periods_per_year=252
             )
@@ -1597,6 +1576,7 @@ def main():
             sim_ret_comb_s = np.array([])
             cf_vol_comb = cf_ret_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+
 
         tickers_comb = acoes_validos + fii_validos
         tickers_man = normalizar_tickers(tickers_man)
