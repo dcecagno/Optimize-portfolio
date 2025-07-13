@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 from scipy.spatial import ConvexHull
+from scipy.interpolate import PchipInterpolator
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import seaborn as sns
@@ -343,25 +344,36 @@ def pick_best_sim(
 
 def convex_frontier(vols: np.ndarray, rets: np.ndarray):
     """
-    Retorna (vol_front, ret_front, idx_front) sobre o hull superior.
+    Retorna (vol_interp, ret_interp, idx_front) com interpolação suave da fronteira eficiente.
     """
     pts = np.column_stack((vols, rets))
     hull = ConvexHull(pts)
-    # pega só vértices
     verts = hull.vertices
-    # ordena por volatilidade
-    verts = sorted(verts, key=lambda i: pts[i,0])
+
+    # Ordena os vértices por volatilidade crescente
+    verts = sorted(verts, key=lambda i: pts[i, 0])
+
+    # Filtra apenas os pontos do envelope superior (retorno crescente)
     frontier = []
     idx_front = []
-    cur_max = -np.inf
+    cur_max_ret = -np.inf
     for i in verts:
-        v, r = pts[i]
-        if r > cur_max:
-            frontier.append((v,r))
+        vol, ret = pts[i]
+        if ret >= cur_max_ret:
+            frontier.append((vol, ret))
             idx_front.append(i)
-            cur_max = r
+            cur_max_ret = ret
+
     vol_f, ret_f = zip(*frontier)
-    return np.array(vol_f), np.array(ret_f), idx_front
+    vol_f = np.array(vol_f)
+    ret_f = np.array(ret_f)
+
+    # Interpolação suave com PCHIP
+    interpolador = PchipInterpolator(vol_f, ret_f)
+    vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
+    ret_interp = interpolador(vol_interp)
+
+    return vol_interp, ret_interp, idx_front
 
 # =======================
 # Funções de Plotagem
@@ -1565,7 +1577,7 @@ def main():
             dyn_vol_aco = np.array(dyn_vol_aco)
 
             # 3) Substitui a fronteira estática pela dinâmica
-            vol_lin_aco, ret_lin_aco = dyn_vol_aco, dyn_ret_aco
+            vol_lin_aco, ret_lin_aco, _ = convex_frontier(dyn_vol_aco, dyn_ret_aco)
 
             # 4) Best‐Sharpe sobre a curva dinâmica
             sh_aco_dyn = (dyn_ret_aco - rf) / dyn_vol_aco
@@ -1601,7 +1613,7 @@ def main():
             dyn_vol_fii = np.array(dyn_vol_fii)
 
             # Substitui fronteira estática pela dinâmica
-            vol_lin_fii, ret_lin_fii = dyn_vol_fii, dyn_ret_fii
+            vol_lin_fii, ret_lin_fii, _ = convex_frontier(dyn_vol_fii, dyn_ret_fii)
 
             sh_fii_dyn = (dyn_ret_fii - rf) / dyn_vol_fii
             best_i     = np.nanargmax(sh_fii_dyn)
@@ -1639,7 +1651,7 @@ def main():
             dyn_vol_comb = np.array(dyn_vol_comb)
 
             # Substitui fronteira estática pela dinâmica
-            vol_lin_comb, ret_lin_comb = dyn_vol_comb, dyn_ret_comb
+            vol_lin_comb, ret_lin_com, _ = convex_frontier(dyn_vol_comb, dyn_ret_comb)
 
             sh_comb_dyn = (dyn_ret_comb - rf) / dyn_vol_comb
             best_i     = np.nanargmax(sh_comb_dyn)
