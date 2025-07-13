@@ -144,7 +144,12 @@ def filtrar_por_composicao(ativos_simulados: list[list[str]], acoes: set, fiis: 
     return so_acoes, so_fiis, mistos
 
 def filtrar_por_indices(arr, indices):
-    return arr[indices] if len(indices) > 0 else np.array([])
+    if len(indices) == 0:
+        return np.array([])
+    if isinstance(arr, np.ndarray):
+        return arr[indices]
+    else:
+        return [arr[i] for i in indices]
 
 # =======================
 # Funções de Otimização
