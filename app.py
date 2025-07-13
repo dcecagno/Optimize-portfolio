@@ -1539,35 +1539,46 @@ def main():
 
         # AÇÕES
         if len(sim_vol_aco) > 0:
-            sim_ret_aco_s, cf_vol_aco, cf_idx_aco = np.exp(sim_ret_aco) - 1, *convex_frontier(sim_vol_aco, np.exp(sim_ret_aco) - 1)
+            # 1) log → composto
+            sim_ret_aco_s = np.exp(sim_ret_aco) - 1
 
-            # Cria fronteira dinâmica
+            # 2) saque a fronteira estática: volatilidade, retorno e índices
+            cf_vol_aco, cf_ret_aco, cf_idx_aco = convex_frontier(
+                sim_vol_aco,
+                sim_ret_aco_s
+            )
+
+            # 3) constrói a fronteira dinâmica só nos vértices
             dyn_vol_aco = []
             dyn_ret_aco = []
             for idx in cf_idx_aco:
                 w = sim_pesos_aco[idx]
-                mu_d, vol_d = dynamic_log_portfolio_metrics(prices_aco, w, acoes_validos)
+                mu_d, vol_d = dynamic_log_portfolio_metrics(
+                    prices_aco, w, acoes_validos
+                )
                 dyn_vol_aco.append(vol_d)
                 dyn_ret_aco.append(mu_d)
             dyn_vol_aco = np.array(dyn_vol_aco)
             dyn_ret_aco = np.array(dyn_ret_aco)
 
-            # Best Sharpe na fronteira dinâmica
+            # 4) escolhe o best‐Sharpe na fronteira dinâmica
             sh_aco_dyn = (dyn_ret_aco - rf) / dyn_vol_aco
-            best_i   = np.nanargmax(sh_aco_dyn)
-            w_sharpe_aco   = sim_pesos_aco[cf_idx_aco[best_i]]
-            ret_sh_aco     = dyn_ret_aco[best_i]
-            vol_sh_aco     = dyn_vol_aco[best_i]
+            best_i    = np.nanargmax(sh_aco_dyn)
+
+            w_sharpe_aco       = sim_pesos_aco[cf_idx_aco[best_i]]
+            ret_sh_aco         = dyn_ret_aco[best_i]
+            vol_sh_aco         = dyn_vol_aco[best_i]
             sharpe_liquida_aco = sh_aco_dyn[best_i]
+
         else:
             sim_ret_aco_s = np.array([])
             cf_vol_aco = cf_ret_aco = np.array([])
             w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
 
-
         # FIIs
         if len(sim_vol_fii) > 0:
-            sim_ret_fii_s, cf_vol_fii, cf_idx_fii = np.exp(sim_ret_fii) - 1, *convex_frontier(sim_vol_fii, np.exp(sim_ret_fii) - 1)
+            sim_ret_fii_s = np.exp(sim_ret_fii) - 1
+            cf_vol_fii, cf_ret_fii, cf_idx_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
 
             dyn_vol_fii = []
             dyn_ret_fii = []
@@ -1580,21 +1591,24 @@ def main():
             dyn_ret_fii = np.array(dyn_ret_fii)
 
             sh_fii_dyn = (dyn_ret_fii - rf) / dyn_vol_fii
-            best_i   = np.nanargmax(sh_fii_dyn)
-            w_sharpe_fii   = sim_pesos_fii[cf_idx_fii[best_i]]
-            ret_sh_fii     = dyn_ret_fii[best_i]
-            vol_sh_fii     = dyn_vol_fii[best_i]
-            sharpe_liquida_fii = sh_fii_dyn[best_i]
+            best_i     = np.nanargmax(sh_fii_dyn)
+
+            w_sharpe_fii        = sim_pesos_fii[cf_idx_fii[best_i]]
+            ret_sh_fii          = dyn_ret_fii[best_i]
+            vol_sh_fii          = dyn_vol_fii[best_i]
+            sharpe_liquida_fii  = sh_fii_dyn[best_i]
         else:
             sim_ret_fii_s = np.array([])
             cf_vol_fii = cf_ret_fii = np.array([])
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
+
         tickers_comb = acoes_validos + fii_validos
 
         # COMBINADO (continuação)
         if len(sim_vol_misto) > 0:
-            sim_ret_comb_s, cf_vol_comb, cf_idx_comb = np.exp(sim_ret_misto) - 1, *convex_frontier(sim_vol_misto, np.exp(sim_ret_misto) - 1)
+            sim_ret_comb_s = np.exp(sim_ret_misto) - 1
+            cf_vol_comb, cf_ret_comb, cf_idx_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
 
             dyn_vol_comb = []
             dyn_ret_comb = []
@@ -1607,16 +1621,18 @@ def main():
             dyn_ret_comb = np.array(dyn_ret_comb)
 
             sh_comb_dyn = (dyn_ret_comb - rf) / dyn_vol_comb
-            best_i     = np.nanargmax(sh_comb_dyn)
-            w_sharpe_comb   = sim_pesos_misto[cf_idx_comb[best_i]]
-            ret_sh_comb     = dyn_ret_comb[best_i]
-            vol_sh_comb     = dyn_vol_comb[best_i]
-            sharpe_liquida_comb = sh_comb_dyn[best_i]
+            best_i      = np.nanargmax(sh_comb_dyn)
+
+            w_sharpe_comb        = sim_pesos_misto[cf_idx_comb[best_i]]
+            ret_sh_comb          = dyn_ret_comb[best_i]
+            vol_sh_comb          = dyn_vol_comb[best_i]
+            sharpe_liquida_comb  = sh_comb_dyn[best_i]
         else:
             sim_ret_comb_s = np.array([])
             cf_vol_comb = cf_ret_comb = np.array([])
-            w_sharpe_comb       = np.array([])
+            w_sharpe_comb = np.array([])
             ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+
         
         tickers_man = normalizar_tickers(tickers_man)
 
