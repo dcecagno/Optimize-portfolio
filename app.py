@@ -1924,53 +1924,72 @@ def main():
 
 
         
-        cenarios = [
-        ("Carteira de Sharpe Máximo – AÇÕES", w_sharpe_aco, acoes_validos, cov_aco, sharpe_liquida_aco, ret_sh_aco, vol_sh_aco),
-        ("Carteira de Sharpe Máximo – FIIs",  w_sharpe_fii,  fii_validos,  cov_fii,  sharpe_liquida_fii,  ret_sh_fii,  vol_sh_fii),
-        ("Carteira de Sharpe Máximo – AÇÕES E FIIs", w_sharpe_comb, tickers_comb, cov_comb, sharpe_liquida_comb, ret_sh_comb, vol_sh_comb),
-    ]
+        # 1) MONTA CENÁRIOS COM OS TICKERS EXATOS DE CADA SHARPE MÁXIMO
+        cenarios = []
 
-        # Só adiciona o(s) cenário(s) manual(aux) se houver tickers válidos
-        if tickers_man:
-            cenarios.append(
-                ("Carteira Manual", w_man, tickers_man, cov_manual, sharpe_man, ret_man, vol_man)
-            )
-            cenarios.append(
-                ("Carteira Manual Otimizada", w_opt_manual, tickers_man, cov_opt_manual, sharpe_opt_manual, ret_opt_manual, vol_opt_manual)
-            )
-            cenarios.append(
-                (f"Carteira Híbrida Otimizada (com {int(percentual_adicional*100)}% adicionais)",
-                w_hibrida, tickers_hibrida, cov_hibrida, sharpe_hibrida, ret_hibrida, vol_hibrida)
-            )
-        else:
-            st.info("Nenhum ticker válido na Carteira Manual → pulando cenário manual.")
+        # AÇÕES
+        if not np.isnan(vol_sh_aco):
+            ticks_aco = ativos_aco[idx_sharpe_aco]                # lista de tickers daquela simulação
+            cov_sub_aco = cov_aco.loc[ticks_aco, ticks_aco]       # sub-cov só desses tickers
+            cenarios.append((
+                "Sharpe Máx – Ações",
+                w_sharpe_aco,
+                ticks_aco,
+                cov_sub_aco,
+                sharpe_liquida_aco,
+                ret_sh_aco,
+                vol_sh_aco
+            ))
 
+        # FIIs
+        if not np.isnan(vol_sh_fii):
+            ticks_fii = ativos_fii[idx_sharpe_fii]
+            cov_sub_fii = cov_fii.loc[ticks_fii, ticks_fii]
+            cenarios.append((
+                "Sharpe Máx – FIIs",
+                w_sharpe_fii,
+                ticks_fii,
+                cov_sub_fii,
+                sharpe_liquida_fii,
+                ret_sh_fii,
+                vol_sh_fii
+            ))
+
+        # COMBINADO (Ações + FIIs)
+        if not np.isnan(vol_sh_comb):
+            ticks_comb_sim = st.session_state.ativos_comb[idx_sharpe_comb]
+            cov_sub_comb = cov_comb.loc[ticks_comb_sim, ticks_comb_sim]
+            cenarios.append((
+                "Sharpe Máx – Ações + FIIs",
+                w_sharpe_comb,
+                ticks_comb_sim,
+                cov_sub_comb,
+                sharpe_liquida_comb,
+                ret_sh_comb,
+                vol_sh_comb
+            ))
+
+        # (Opcional) Carteiras Manuais — mantém o seu bloco, pois aí w e tickers_man já batem
+
+        # 2) RENDERIZAÇÃO
         st.divider()
+        for nome, w, ticks, cov_df, s, r, v in cenarios:
+            # tabela de participação + heatmap
+            render_portfolio_section(
+                name=nome,
+                weights=w,
+                tickers=ticks,
+                cov_df=cov_df,
+                sharpe=s,
+                ret=r,
+                vol=v
+            )
 
-        for (nome, w, ticks, cov, s, r, v) in cenarios:
-            if isinstance(w, (list, np.ndarray)) and isinstance(ticks, list) and len(w) == len(ticks) and len(w) > 0:
-                render_portfolio_section(
-                    name=nome,
-                    weights=w,
-                    tickers=ticks,
-                    cov_df=cov,
-                    sharpe=s,
-                    ret=r,
-                    vol=v,
-                    min_weight=0.001
-                )
-            else:
-                st.warning(f"Carteira '{nome}' não pôde ser exibida por dados inconsistentes ou vazios.")
-
-            if nome == "Carteira de Sharpe Máximo – AÇÕES E FIIs":
-                # acha índices de ações e FIIs na carteira combinada
-                idx_aco = [ticks.index(t) for t in acoes_validos if t in ticks]
-                idx_fii = [ticks.index(t) for t in fii_validos   if t in ticks]
-
-                pct_acoes = w[idx_aco].sum()
-                pct_fii   = w[idx_fii].sum()
-
-                st.markdown("**Composição por classe (Máx. Sharpe – Comb.):**")
+            # se for o combinado, exibe % Ações vs % FIIs
+            if nome == "Sharpe Máx – Ações + FIIs":
+                pct_acoes = sum(w[i] for i,t in enumerate(ticks) if t in acoes_validos)
+                pct_fii   = sum(w[i] for i,t in enumerate(ticks) if t in fii_validos)
+                st.markdown("**Composição por classe:**")
                 st.markdown(f"- Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
 
             st.divider()
