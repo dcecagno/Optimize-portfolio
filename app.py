@@ -1570,113 +1570,97 @@ def main():
 
         # AÇÕES
         if len(sim_vol_aco) > 0:
-            # 1) Fronteira estática (vol_log, ret_compound aprox)
-            cf_vol_aco, cf_ret_aco, cf_idx_aco = convex_frontier(
-                sim_vol_aco,
-                sim_ret_aco
-            )
+            # 1) Calcula convex hull sobre os pontos simulados
+            pts_aco = np.column_stack((sim_vol_aco, sim_ret_aco))
+            hull_aco = ConvexHull(pts_aco)
+            cf_idx_aco = sorted(hull_aco.vertices, key=lambda i: pts_aco[i, 0])
 
-            # 2) Fronteira “verdadeira” em composto nos vértices
+            # 2) Recalcula os pontos com retorno composto
             dyn_vol_aco = []
             dyn_ret_aco = []
             for idx in cf_idx_aco:
                 w = sim_pesos_aco[idx]
-                ret_c, vol_c = dynamic_compound_portfolio_metrics(
-                    prices_aco, w, acoes_validos
-                )
+                ret_c, vol_c = dynamic_compound_portfolio_metrics(prices_aco, w, acoes_validos)
                 dyn_ret_aco.append(ret_c)
                 dyn_vol_aco.append(vol_c)
             dyn_ret_aco = np.array(dyn_ret_aco)
             dyn_vol_aco = np.array(dyn_vol_aco)
 
-            # 3) Substitui a fronteira estática pela dinâmica
+            # 3) Aplica convex_frontier sobre os pontos compostos
             vol_lin_aco, ret_lin_aco, _ = convex_frontier(dyn_vol_aco, dyn_ret_aco)
 
             # 4) Best‐Sharpe sobre a curva dinâmica
             sh_aco_dyn = (dyn_ret_aco - rf) / dyn_vol_aco
-            best_i    = np.nanargmax(sh_aco_dyn)
+            best_i = np.nanargmax(sh_aco_dyn)
 
-            w_sharpe_aco       = sim_pesos_aco[cf_idx_aco[best_i]]
-            ret_sh_aco         = dyn_ret_aco[best_i]
-            vol_sh_aco         = dyn_vol_aco[best_i]
+            w_sharpe_aco = sim_pesos_aco[cf_idx_aco[best_i]]
+            ret_sh_aco = dyn_ret_aco[best_i]
+            vol_sh_aco = dyn_vol_aco[best_i]
             sharpe_liquida_aco = sh_aco_dyn[best_i]
         else:
-            cf_vol_aco = cf_ret_aco = np.array([])
-            w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
             vol_lin_aco = ret_lin_aco = np.array([])
-
+            w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
 
         # ——— FIIs ———
         if len(sim_vol_fii) > 0:
-            cf_vol_fii, cf_ret_fii, cf_idx_fii = convex_frontier(
-                sim_vol_fii,
-                sim_ret_fii
-            )
+            pts_fii = np.column_stack((sim_vol_fii, sim_ret_fii))
+            hull_fii = ConvexHull(pts_fii)
+            cf_idx_fii = sorted(hull_fii.vertices, key=lambda i: pts_fii[i, 0])
 
             dyn_vol_fii = []
             dyn_ret_fii = []
             for idx in cf_idx_fii:
                 w = sim_pesos_fii[idx]
-                ret_c, vol_c = dynamic_compound_portfolio_metrics(
-                    prices_fii, w, fii_validos
-                )
+                ret_c, vol_c = dynamic_compound_portfolio_metrics(prices_fii, w, fii_validos)
                 dyn_ret_fii.append(ret_c)
                 dyn_vol_fii.append(vol_c)
             dyn_ret_fii = np.array(dyn_ret_fii)
             dyn_vol_fii = np.array(dyn_vol_fii)
 
-            # Substitui fronteira estática pela dinâmica
             vol_lin_fii, ret_lin_fii, _ = convex_frontier(dyn_vol_fii, dyn_ret_fii)
 
             sh_fii_dyn = (dyn_ret_fii - rf) / dyn_vol_fii
-            best_i     = np.nanargmax(sh_fii_dyn)
+            best_i = np.nanargmax(sh_fii_dyn)
 
-            w_sharpe_fii        = sim_pesos_fii[cf_idx_fii[best_i]]
-            ret_sh_fii          = dyn_ret_fii[best_i]
-            vol_sh_fii          = dyn_vol_fii[best_i]
-            sharpe_liquida_fii  = sh_fii_dyn[best_i]
+            w_sharpe_fii = sim_pesos_fii[cf_idx_fii[best_i]]
+            ret_sh_fii = dyn_ret_fii[best_i]
+            vol_sh_fii = dyn_vol_fii[best_i]
+            sharpe_liquida_fii = sh_fii_dyn[best_i]
         else:
-            cf_vol_fii = cf_ret_fii = np.array([])
-            w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
             vol_lin_fii = ret_lin_fii = np.array([])
-
-
+            w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
         # ——— COMBINADO (Ações + FIIs) ———
         tickers_comb = acoes_validos + fii_validos
 
         if len(sim_vol_misto) > 0:
-            cf_vol_comb, cf_ret_comb, cf_idx_comb = convex_frontier(
-                sim_vol_misto,
-                sim_ret_misto
-            )
+            pts_comb = np.column_stack((sim_vol_misto, sim_ret_misto))
+            hull_comb = ConvexHull(pts_comb)
+            cf_idx_comb = sorted(hull_comb.vertices, key=lambda i: pts_comb[i, 0])
 
             dyn_vol_comb = []
             dyn_ret_comb = []
             for idx in cf_idx_comb:
                 w = sim_pesos_misto[idx]
-                ret_c, vol_c = dynamic_compound_portfolio_metrics(
-                    prices_comb, w, tickers_comb
-                )
+                ret_c, vol_c = dynamic_compound_portfolio_metrics(prices_comb, w, tickers_comb)
                 dyn_ret_comb.append(ret_c)
                 dyn_vol_comb.append(vol_c)
             dyn_ret_comb = np.array(dyn_ret_comb)
             dyn_vol_comb = np.array(dyn_vol_comb)
 
-            # Substitui fronteira estática pela dinâmica
             vol_lin_comb, ret_lin_comb, _ = convex_frontier(dyn_vol_comb, dyn_ret_comb)
 
             sh_comb_dyn = (dyn_ret_comb - rf) / dyn_vol_comb
-            best_i     = np.nanargmax(sh_comb_dyn)
+            best_i = np.nanargmax(sh_comb_dyn)
 
-            w_sharpe_comb        = sim_pesos_misto[cf_idx_comb[best_i]]
-            ret_sh_comb          = dyn_ret_comb[best_i]
-            vol_sh_comb          = dyn_vol_comb[best_i]
-            sharpe_liquida_comb  = sh_comb_dyn[best_i]
+            w_sharpe_comb = sim_pesos_misto[cf_idx_comb[best_i]]
+            ret_sh_comb = dyn_ret_comb[best_i]
+            vol_sh_comb = dyn_vol_comb[best_i]
+            sharpe_liquida_comb = sh_comb_dyn[best_i]
         else:
-            cf_vol_comb = cf_ret_comb = np.array([])
-            w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
             vol_lin_comb = ret_lin_comb = np.array([])
+            w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+
 
 
         
