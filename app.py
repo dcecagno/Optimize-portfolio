@@ -1301,7 +1301,7 @@ def main():
     ibov_read = ibov_read.loc[time_start:time_end]
     
     # Parâmetros para a simulação de Monte Carlo
-    n_sim = 400_000
+    n_sim = 100_000
     seed = 42
     alpha_dirichlet = 1
     min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
