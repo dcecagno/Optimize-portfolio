@@ -1743,63 +1743,69 @@ def main():
         cov_hibrida     = pd.DataFrame()
 
         if tickers_man:
-            total_man     = sum(valores_man)
-            w_man         = np.array([v/total_man for v in valores_man])
+            total_man       = sum(valores_man)
+            w_man           = np.array([v/total_man for v in valores_man])
             tickers_hibrida = []
-            w_hibrida       = np.array([])     # array vazio por padrão
+            w_hibrida       = np.array([])      # array vazio por padrão
             ret_hibrida     = vol_hibrida = sharpe_hibrida = np.nan
 
-            # Prepara DataFrame alinhado
+            # Série de preços limpa para o cálculo composto
             prices_manual = prices_comb[tickers_man].dropna()
-            rets_manual = np.log(prices_manual / prices_manual.shift(1)).dropna()
-
-            mu_manual  = rets_manual.mean() * 252
-            cov_manual = rets_manual.cov()  * 252
-
-            mu_vec  = mu_manual.loc[tickers_man].values
-            cov_mat = cov_manual.loc[tickers_man, tickers_man].values
 
             try:
-                # Carteira manual original
-                log_ret_man = np.dot(w_man, mu_vec)
-                vol_man     = np.sqrt(np.dot(w_man.T, np.dot(cov_mat, w_man)))
-                sharpe_man  = (log_ret_man - rf) / vol_man
-                ret_man     = np.exp(log_ret_man) - 1  # <-- só para exibir
+                # 1) Carteira manual original (1 ativo) — composto exato
+                ret_man, vol_man = dynamic_compound_portfolio_metrics(
+                    prices_manual,
+                    w_man,
+                    tickers_man
+                )
+                sharpe_man = (ret_man - rf) / vol_man
 
+                # 2) Carteira manual otimizada (Sharpe) — composto exato
+                #    usamos mu_comb e cov_comb para otimização
+                mu_vec  = mu_comb.loc[tickers_man].values
+                cov_mat = cov_comb.loc[tickers_man, tickers_man].values
 
-                # Carteira manual otimizada
                 w_opt_manual, sharpe_opt_manual, ok_opt, msg_opt = optimize_max_sharpe(
-                    mu_vec, cov_mat, min_w, max_w, rf)
+                    mu_vec, cov_mat, min_w, max_w, rf
+                )
                 if not ok_opt:
                     st.warning(
-                        "Não foi possível otimizar a carteira manual dentro dos limites de peso mínimo, peso máximo e número de ativos definidos. Tente relaxar algum desses parâmetros e execute novamente."
+                        "Não foi possível otimizar a carteira manual dentro dos limites de peso mínimo, "
+                        "peso máximo e número de ativos definidos. Tente relaxar algum desses parâmetros "
+                        "e execute novamente."
                     )
                     w_opt_manual = w_man
                     sharpe_opt_manual = sharpe_man
 
-                log_ret_opt = np.dot(w_opt_manual, mu_vec)
-                vol_opt_manual = np.sqrt(np.dot(w_opt_manual.T, np.dot(cov_mat, w_opt_manual)))
-                sharpe_opt_manual = (log_ret_opt - rf) / vol_opt_manual
-                ret_opt_manual = np.exp(log_ret_opt) - 1
+                ret_opt_manual, vol_opt_manual = dynamic_compound_portfolio_metrics(
+                    prices_manual,
+                    w_opt_manual,
+                    tickers_man
+                )
+                sharpe_opt_manual = (ret_opt_manual - rf) / vol_opt_manual
 
-                cov_opt_manual = cov_manual
+                cov_manual = cov_comb.loc[tickers_man, tickers_man]
+                cov_opt_manual = cov_comb.loc[tickers_man, tickers_man]
 
-                # Carteira Híbrida – via SLSQP, mantendo pesos mínimos manuais e teto extra  
+                # 3) Carteira Híbrida – via SLSQP, mantendo pesos mínimos manuais e teto extra
                 tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = \
                     otimizar_carteira_hibrida(
-                        tickers_man,          # 1) lista de manuais
-                        valores_man,          # 2) valores correspondentes
-                        [],                   # 3) ativos_sugeridos → vazio faz a função escolher
-                        mu_comb,              # 4) pd.Series de retornos combinados
-                        cov_comb,             # 5) pd.DataFrame de covariâncias combinadas
-                        percentual_adicional, # 6) float em [0,1]
-                        rf                    # 7) taxa livre de risco
+                        tickers_man,          # lista de manuais
+                        valores_man,          # valores correspondentes
+                        [],                   # ativos_sugeridos → vazio faz a função escolher
+                        mu_comb,              # pd.Series de retornos combinados (composto)
+                        cov_comb,             # pd.DataFrame de covariâncias combinadas
+                        percentual_adicional, # float em [0,1]
+                        rf                    # taxa livre de risco
                     )
                 cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
 
             except Exception as e:
                 st.error(f"Erro ao processar carteira manual: {e}")
+                # zera tudo
                 ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
+
         else:
             st.warning("Nenhum ticker válido foi inserido na carteira manual.")
             ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
