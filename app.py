@@ -69,15 +69,21 @@ def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 20
 # Funções de Simulação
 # =======================
 
-def dynamic_portfolio_metrics(
+def dynamic_log_portfolio_metrics(
     prices: pd.DataFrame,
     weights: np.ndarray,
     tickers: list[str],
     periods_per_year: int = 252
 ) -> tuple[float, float]:
-    rets = prices[tickers].pct_change()
+    """
+    Retorno e volatilidade anualizados usando log‐retornos,
+    excluindo dinamicamente ativos sem dados e normalizando pesos.
+    """
+    # 1) log‐retornos
+    rets_log = np.log(prices[tickers] / prices[tickers].shift(1))
 
-    def _wret(row):
+    # 2) return ponderado por período
+    def _wlog(row):
         valid = row.dropna()
         if valid.empty:
             return np.nan
@@ -85,12 +91,15 @@ def dynamic_portfolio_metrics(
         w = w / w.sum()
         return (valid.values * w).sum()
 
-    port_rets = rets.apply(_wret, axis=1).dropna()
-    compounded = (1 + port_rets).prod()
-    n = port_rets.count()
-    annual_return = compounded ** (periods_per_year / n) - 1
-    annual_vol = port_rets.std() * np.sqrt(periods_per_year)
-    return annual_return, annual_vol
+    port_rets = rets_log.apply(_wlog, axis=1).dropna()
+
+    # 3) média * anualização
+    mu_ann = port_rets.mean() * periods_per_year
+
+    # 4) vol anualizada
+    vol_ann = port_rets.std() * np.sqrt(periods_per_year)
+
+    return mu_ann, vol_ann
 
 def simulate_portfolios(
     prices: pd.DataFrame,
@@ -326,25 +335,25 @@ def pick_best_sim(
 
 def convex_frontier(vols: np.ndarray, rets: np.ndarray):
     """
-    Retorna os vértices do upper convex hull de (vols, rets),
-    ordenados por volatilidade ascendente.
+    Retorna (vol_front, ret_front, idx_front) sobre o hull superior.
     """
-    pts  = np.column_stack((vols, rets))
+    pts = np.column_stack((vols, rets))
     hull = ConvexHull(pts)
-    # pega só os pontos do hull
-    hull_pts = pts[hull.vertices]
+    # pega só vértices
+    verts = hull.vertices
     # ordena por volatilidade
-    hull_pts = hull_pts[np.argsort(hull_pts[:,0])]
-    # filtra apenas o envelope superior: mantém o maior retorno visto até então
+    verts = sorted(verts, key=lambda i: pts[i,0])
     frontier = []
-    current_max = -np.inf
-    for v, r in hull_pts:
-        if r > current_max:
-            frontier.append((v, r))
-            current_max = r
-    # separa em dois arrays
-    vol_front, ret_front = zip(*frontier)
-    return np.array(vol_front), np.array(ret_front)
+    idx_front = []
+    cur_max = -np.inf
+    for i in verts:
+        v, r = pts[i]
+        if r > cur_max:
+            frontier.append((v,r))
+            idx_front.append(i)
+            cur_max = r
+    vol_f, ret_f = zip(*frontier)
+    return np.array(vol_f), np.array(ret_f), idx_front
 
 # =======================
 # Funções de Plotagem
@@ -1530,59 +1539,85 @@ def main():
 
         # AÇÕES
         if len(sim_vol_aco) > 0:
-            sim_ret_aco_s = np.exp(sim_ret_aco) - 1
-            cf_vol_aco, cf_ret_aco = convex_frontier(sim_vol_aco, sim_ret_aco_s)
+            sim_ret_aco_s, cf_vol_aco, cf_idx_aco = np.exp(sim_ret_aco) - 1, *convex_frontier(sim_vol_aco, np.exp(sim_ret_aco) - 1)
 
-            w_sharpe_aco, *_ = pick_best_sim(sim_ret_aco, sim_vol_aco, sim_pesos_aco, rf)
-            ret_sh_aco, vol_sh_aco = dynamic_portfolio_metrics(
-                prices_aco, w_sharpe_aco, acoes_validos, periods_per_year=252
-            )
-            sharpe_liquida_aco = (ret_sh_aco - rf) / vol_sh_aco
+            # Cria fronteira dinâmica
+            dyn_vol_aco = []
+            dyn_ret_aco = []
+            for idx in cf_idx_aco:
+                w = sim_pesos_aco[idx]
+                mu_d, vol_d = dynamic_log_portfolio_metrics(prices_aco, w, acoes_validos)
+                dyn_vol_aco.append(vol_d)
+                dyn_ret_aco.append(mu_d)
+            dyn_vol_aco = np.array(dyn_vol_aco)
+            dyn_ret_aco = np.array(dyn_ret_aco)
+
+            # Best Sharpe na fronteira dinâmica
+            sh_aco_dyn = (dyn_ret_aco - rf) / dyn_vol_aco
+            best_i   = np.nanargmax(sh_aco_dyn)
+            w_sharpe_aco   = sim_pesos_aco[cf_idx_aco[best_i]]
+            ret_sh_aco     = dyn_ret_aco[best_i]
+            vol_sh_aco     = dyn_vol_aco[best_i]
+            sharpe_liquida_aco = sh_aco_dyn[best_i]
         else:
             sim_ret_aco_s = np.array([])
             cf_vol_aco = cf_ret_aco = np.array([])
             w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
 
+
         # FIIs
         if len(sim_vol_fii) > 0:
-            sim_ret_fii_s = np.exp(sim_ret_fii) - 1
-            cf_vol_fii, cf_ret_fii = convex_frontier(sim_vol_fii, sim_ret_fii_s)
+            sim_ret_fii_s, cf_vol_fii, cf_idx_fii = np.exp(sim_ret_fii) - 1, *convex_frontier(sim_vol_fii, np.exp(sim_ret_fii) - 1)
 
-            w_sharpe_fii, *_ = pick_best_sim(sim_ret_fii, sim_vol_fii, sim_pesos_fii, rf)
-            ret_sh_fii, vol_sh_fii = dynamic_portfolio_metrics(
-                prices_fii, w_sharpe_fii, fii_validos, periods_per_year=252
-            )
-            sharpe_liquida_fii = (ret_sh_fii - rf) / vol_sh_fii
+            dyn_vol_fii = []
+            dyn_ret_fii = []
+            for idx in cf_idx_fii:
+                w = sim_pesos_fii[idx]
+                mu_d, vol_d = dynamic_log_portfolio_metrics(prices_fii, w, fii_validos)
+                dyn_vol_fii.append(vol_d)
+                dyn_ret_fii.append(mu_d)
+            dyn_vol_fii = np.array(dyn_vol_fii)
+            dyn_ret_fii = np.array(dyn_ret_fii)
+
+            sh_fii_dyn = (dyn_ret_fii - rf) / dyn_vol_fii
+            best_i   = np.nanargmax(sh_fii_dyn)
+            w_sharpe_fii   = sim_pesos_fii[cf_idx_fii[best_i]]
+            ret_sh_fii     = dyn_ret_fii[best_i]
+            vol_sh_fii     = dyn_vol_fii[best_i]
+            sharpe_liquida_fii = sh_fii_dyn[best_i]
         else:
             sim_ret_fii_s = np.array([])
             cf_vol_fii = cf_ret_fii = np.array([])
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
+        tickers_comb = acoes_validos + fii_validos
+
         # COMBINADO (continuação)
         if len(sim_vol_misto) > 0:
-            sim_ret_comb_s = np.exp(sim_ret_misto) - 1
-            cf_vol_comb, cf_ret_comb = convex_frontier(sim_vol_misto, sim_ret_comb_s)
+            sim_ret_comb_s, cf_vol_comb, cf_idx_comb = np.exp(sim_ret_misto) - 1, *convex_frontier(sim_vol_misto, np.exp(sim_ret_misto) - 1)
 
-            w_sharpe_comb, *_ = pick_best_sim(
-                sim_ret_misto,
-                sim_vol_misto,
-                sim_pesos_misto,
-                rf
-            )
+            dyn_vol_comb = []
+            dyn_ret_comb = []
+            for idx in cf_idx_comb:
+                w = sim_pesos_misto[idx]
+                mu_d, vol_d = dynamic_log_portfolio_metrics(prices_comb, w, tickers_comb)
+                dyn_vol_comb.append(vol_d)
+                dyn_ret_comb.append(mu_d)
+            dyn_vol_comb = np.array(dyn_vol_comb)
+            dyn_ret_comb = np.array(dyn_ret_comb)
 
-            # ← Chamada CORRETA para o combinado
-            ret_sh_comb, vol_sh_comb = dynamic_portfolio_metrics(
-                prices_comb,
-                w_sharpe_comb,
-                tickers_comb
-            )
-            sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
+            sh_comb_dyn = (dyn_ret_comb - rf) / dyn_vol_comb
+            best_i     = np.nanargmax(sh_comb_dyn)
+            w_sharpe_comb   = sim_pesos_misto[cf_idx_comb[best_i]]
+            ret_sh_comb     = dyn_ret_comb[best_i]
+            vol_sh_comb     = dyn_vol_comb[best_i]
+            sharpe_liquida_comb = sh_comb_dyn[best_i]
         else:
             sim_ret_comb_s = np.array([])
             cf_vol_comb = cf_ret_comb = np.array([])
-            w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
-
-
+            w_sharpe_comb       = np.array([])
+            ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+        
         tickers_man = normalizar_tickers(tickers_man)
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
