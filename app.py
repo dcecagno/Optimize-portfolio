@@ -438,7 +438,9 @@ def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tic
     if len(frontier) < 2:
         return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
 
-    vol_f, ret_f = zip(*frontier)
+    # Ordena os pontos da fronteira por volatilidade crescente
+    frontier_sorted = sorted(frontier, key=lambda x: x[0])
+    vol_f, ret_f = zip(*frontier_sorted)
     vol_f = np.array(vol_f)
     ret_f = np.array(ret_f)
 
