@@ -1651,7 +1651,7 @@ def main():
             dyn_vol_comb = np.array(dyn_vol_comb)
 
             # Substitui fronteira estática pela dinâmica
-            vol_lin_comb, ret_lin_com, _ = convex_frontier(dyn_vol_comb, dyn_ret_comb)
+            vol_lin_comb, ret_lin_comb, _ = convex_frontier(dyn_vol_comb, dyn_ret_comb)
 
             sh_comb_dyn = (dyn_ret_comb - rf) / dyn_vol_comb
             best_i     = np.nanargmax(sh_comb_dyn)
