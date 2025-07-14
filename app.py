@@ -1790,10 +1790,9 @@ def main():
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
         # FRONTEIRA + SHARPE MÁXIMO – COMBINADO
-        ticks_comb = []  # garante que sempre exista
         if sim_vol_comb.size > 0:
 
-            # 1) Constrói a fronteira eficiente composta (sem extrapolar)
+            # 1) Constrói fronteira eficiente composta (sem extrapolar)
             vol_lin_comb, ret_lin_comb, idx_sharpe_comb, _ = build_efficient_frontier_compound(
                 sim_vol_comb,
                 sim_ret_comb,
@@ -1803,25 +1802,23 @@ def main():
                 rf
             )
 
-            # 2) Se encontramos um índice válido na fronteira…
-            if idx_sharpe_comb is not None and isinstance(idx_sharpe_comb, int):
-                w_sharpe_comb = sim_w_comb[idx_sharpe_comb]
-                ticks_comb    = sim_tickers_comb[idx_sharpe_comb]
-
-                # 3) Recalcula retorno/volatilidade compostos via log-returns
-                ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
-                    prices_comb, w_sharpe_comb, ticks_comb
-                )
-                sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
-
+            # 2) Decide índice do ponto de Sharpe Máx
+            if idx_sharpe_comb is not None:
+                idx = int(idx_sharpe_comb)
             else:
-                # fallback: escolhe o melhor com base nas simulações diretas
-                w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
-                    pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
-                # seleciona também os tickers correspondentes
-                idx = np.nanargmax((sim_ret_comb - rf) / sim_vol_comb)
-                ticks_comb = sim_tickers_comb[idx]
-                vol_lin_comb, ret_lin_comb = np.array([]), np.array([])
+                # fallback: escolhe pela simulação direta
+                sharpe_vals = (sim_ret_comb - rf) / sim_vol_comb
+                idx         = np.nanargmax(sharpe_vals)
+
+            # 3) Extrai pesos e tickers a partir de sim_tickers_comb
+            w_sharpe_comb = sim_w_comb[idx]
+            ticks_comb    = sim_tickers_comb[idx]
+
+            # 4) Recalcula retorno e volatilidade compostos
+            ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
+                prices_comb, w_sharpe_comb, ticks_comb
+            )
+            sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
 
         else:
             vol_lin_comb = ret_lin_comb = np.array([])
@@ -2123,7 +2120,7 @@ def main():
 
         # Sharpe Máx – Ações + FIIs
         if not np.isnan(vol_sh_comb):
-            ticks = ativos_misto[idx_sharpe_comb]
+            ticks = ticks_comb
             # Debug: aritmético vs composto vs passado
             rets_comb = prices_comb[ticks].pct_change().dropna()
             mu_arith  = rets_comb.mean() * 252
