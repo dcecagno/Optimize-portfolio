@@ -2004,8 +2004,6 @@ def main():
             ret_anual_ibov, vol_anual_ibov
         )
 
-
-        
         # ================================
         # 1) Montagem de todos os cenários
         # ================================
@@ -2013,7 +2011,7 @@ def main():
 
         # Sharpe Máx – Ações
         if not np.isnan(vol_sh_aco):
-            ticks_aco = sim_tickers_aco[idx_sharpe_aco]
+            ticks_aco = ativos_aco[idx_sharpe_aco]
             cov_sub   = cov_aco.loc[ticks_aco, ticks_aco]
             cenarios.append((
                 "Sharpe Máx – Ações",
@@ -2027,7 +2025,7 @@ def main():
 
         # Sharpe Máx – FIIs
         if not np.isnan(vol_sh_fii):
-            ticks_fii = sim_tickers_fii[idx_sharpe_fii]
+            ticks_fii = ativos_fii[idx_sharpe_fii]
             cov_sub   = cov_fii.loc[ticks_fii, ticks_fii]
             cenarios.append((
                 "Sharpe Máx – FIIs",
@@ -2041,7 +2039,7 @@ def main():
 
         # Sharpe Máx – Ações + FIIs
         if not np.isnan(vol_sh_comb):
-            ticks_comb = sim_tickers_comb[idx_sharpe_comb]
+            ticks_comb = ativos_misto[idx_sharpe_comb]
             cov_sub    = cov_comb.loc[ticks_comb, ticks_comb]
             cenarios.append((
                 "Sharpe Máx – Ações + FIIs",
