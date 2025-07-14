@@ -2061,12 +2061,21 @@ def main():
 
         # Sharpe Máx – Ações
         if not np.isnan(vol_sh_aco):
-            ticks_aco = ativos_aco[idx_sharpe_aco]
-            cov_sub   = cov_aco.loc[ticks_aco, ticks_aco]
+            ticks = ativos_aco[idx_sharpe_aco]
+            # Debug: aritmético vs composto vs passado
+            rets_aco = prices_aco[ticks].pct_change().dropna()
+            mu_arith = rets_aco.mean() * 252
+            w_dot_mu = np.dot(w_sharpe_aco, mu_arith.values)
+            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(prices_aco, w_sharpe_aco, ticks)
+            st.write("🏷️ Sharpe Máx – Ações")
+            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
+            st.write(f"   ret_passado = {ret_sh_aco:.2%} | vol_passado = {vol_sh_aco:.2%}")
+            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
+            cov_sub = cov_aco.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – Ações",
                 w_sharpe_aco,
-                ticks_aco,
+                ticks,
                 cov_sub,
                 sharpe_liquida_aco,
                 ret_sh_aco,
@@ -2075,12 +2084,21 @@ def main():
 
         # Sharpe Máx – FIIs
         if not np.isnan(vol_sh_fii):
-            ticks_fii = ativos_fii[idx_sharpe_fii]
-            cov_sub   = cov_fii.loc[ticks_fii, ticks_fii]
+            ticks = ativos_fii[idx_sharpe_fii]
+            # Debug: aritmético vs composto vs passado
+            rets_fii = prices_fii[ticks].pct_change().dropna()
+            mu_arith = rets_fii.mean() * 252
+            w_dot_mu = np.dot(w_sharpe_fii, mu_arith.values)
+            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(prices_fii, w_sharpe_fii, ticks)
+            st.write("🏷️ Sharpe Máx – FIIs")
+            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
+            st.write(f"   ret_passado = {ret_sh_fii:.2%} | vol_passado = {vol_sh_fii:.2%}")
+            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
+            cov_sub = cov_fii.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – FIIs",
                 w_sharpe_fii,
-                ticks_fii,
+                ticks,
                 cov_sub,
                 sharpe_liquida_fii,
                 ret_sh_fii,
@@ -2089,12 +2107,21 @@ def main():
 
         # Sharpe Máx – Ações + FIIs
         if not np.isnan(vol_sh_comb):
-            ticks_comb = ativos_misto[idx_sharpe_comb]
-            cov_sub    = cov_comb.loc[ticks_comb, ticks_comb]
+            ticks = ativos_misto[idx_sharpe_comb]
+            # Debug: aritmético vs composto vs passado
+            rets_comb = prices_comb[ticks].pct_change().dropna()
+            mu_arith  = rets_comb.mean() * 252
+            w_dot_mu  = np.dot(w_sharpe_comb, mu_arith.values)
+            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(prices_comb, w_sharpe_comb, ticks)
+            st.write("🏷️ Sharpe Máx – Ações + FIIs")
+            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
+            st.write(f"   ret_passado = {ret_sh_comb:.2%} | vol_passado = {vol_sh_comb:.2%}")
+            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
+            cov_sub = cov_comb.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – Ações + FIIs",
                 w_sharpe_comb,
-                ticks_comb,
+                ticks,
                 cov_sub,
                 sharpe_liquida_comb,
                 ret_sh_comb,
@@ -2130,7 +2157,7 @@ def main():
         # Carteira Híbrida
         if tickers_hibrida and isinstance(w_hibrida, np.ndarray):
             cov_sub = cov_comb.loc[tickers_hibrida, tickers_hibrida]
-            nome = f"Carteira Híbrida (+{int(percentual_adicional*100)}% novos)"
+            nome    = f"Carteira Híbrida (+{int(percentual_adicional*100)}% novos)"
             cenarios.append((
                 nome,
                 w_hibrida,
@@ -2165,6 +2192,7 @@ def main():
                 st.markdown(f"- Ações: {pct_aco:.2%} | FIIs: {pct_fii:.2%}")
 
             st.divider()
+
 
                 # Exibe no Streamlit
         st.subheader("📊 Métricas Individuais dos Ativos")
