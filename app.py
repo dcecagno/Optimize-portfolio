@@ -502,31 +502,6 @@ def compute_frontier_and_sharpe(
         "sharpe_sh":   sharpe_sh
     }
 
-def portfolio_metrics_matrix(
-    sim_w: list[np.ndarray],
-    sim_tickers: list[list[str]],
-    tickers_all: list[str],
-    mu_log_vec: np.ndarray,
-    cov_log_mat: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Vetoriza o cálculo de retorno composto e volatilidade anual
-    para uma lista de carteiras (sim_w) e seus tickers.
-    """
-    n_sim = len(sim_w)
-    N     = len(tickers_all)
-    # Monta matriz (n_sim × N) de pesos
-    W = np.zeros((n_sim, N))
-    for i, (w, ticks) in enumerate(zip(sim_w, sim_tickers)):
-        idxs = [tickers_all.index(t) for t in ticks]
-        W[i, idxs] = w
-
-    # retorno: expm1(W @ mu_log_vec)
-    ret = np.expm1(W.dot(mu_log_vec))
-    # volatilidade: sqrt( w_i^T @ cov @ w_i ) para cada sim
-    vol = np.sqrt(np.einsum('ij,jk,ik->i', W, cov_log_mat, W))
-    return ret, vol
-
 # =======================
 # Funções de Plotagem
 # =======================
@@ -1691,38 +1666,6 @@ def main():
         sim_ret_dyn_aco, sim_vol_dyn_aco   = compute_dynamic_cloud(sim_ret_aco, sim_vol_aco, sim_w_aco, sim_tickers_aco, prices_aco)
         sim_ret_dyn_fii, sim_vol_dyn_fii   = compute_dynamic_cloud(sim_ret_fii, sim_vol_fii, sim_w_fii, sim_tickers_fii, prices_fii)
         sim_ret_dyn_comb, sim_vol_dyn_comb = compute_dynamic_cloud(sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb, prices_comb)
-
-        # --- pré-cálculo para Ações ---
-        rets_aco     = prices_aco.pct_change().dropna()
-        log_rets_aco = np.log1p(rets_aco)
-        mu_log_aco   = log_rets_aco.mean() * 252         # vetor (N_aco,)
-        cov_log_aco  = log_rets_aco.cov()  * 252         # matriz (N_aco×N_aco)
-
-        # --- pré-cálculo para FIIs ---
-        rets_fii     = prices_fii.pct_change().dropna()
-        log_rets_fii = np.log1p(rets_fii)
-        mu_log_fii   = log_rets_fii.mean() * 252
-        cov_log_fii  = log_rets_fii.cov()  * 252
-
-        # --- pré-cálculo para Combinado ---
-        rets_comb     = prices_comb.pct_change().dropna()
-        log_rets_comb = np.log1p(rets_comb)
-        mu_log_comb   = log_rets_comb.mean() * 252
-        cov_log_comb  = log_rets_comb.cov()  * 252
-
-        # 2) Nuvens compostas vetorizadas
-        sim_ret_dyn_aco,  sim_vol_dyn_aco  = portfolio_metrics_matrix(
-            sim_w_aco, sim_tickers_aco, acoes_validos,
-            mu_log_aco.values, cov_log_aco.values
-        )
-        sim_ret_dyn_fii,  sim_vol_dyn_fii  = portfolio_metrics_matrix(
-            sim_w_fii, sim_tickers_fii, fii_validos,
-            mu_log_fii.values, cov_log_fii.values
-        )
-        sim_ret_dyn_comb, sim_vol_dyn_comb = portfolio_metrics_matrix(
-            sim_w_comb, sim_tickers_comb, acoes_validos + fii_validos,
-            mu_log_comb.values, cov_log_comb.values
-        )
 
         # 3) constrói fronteira + ponto de Sharpe
         aco_res  = compute_frontier_and_sharpe(sim_ret_dyn_aco, sim_vol_dyn_aco, sim_w_aco, sim_tickers_aco, prices_aco, rf)
