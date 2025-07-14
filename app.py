@@ -100,62 +100,64 @@ def simulate_portfolios(
     alpha_dirichlet: float = 1.0,
     acoes: set[str] = set(),
     fiis: set[str] = set()
-):
+) -> tuple[np.ndarray, np.ndarray, list[np.ndarray], list[list[str]]]:
     """
     Simula n_sim carteiras respeitando:
-      - Número de ativos em [min_assets, max_assets]
+      - Número de ativos entre min_assets e max_assets
       - Cada peso w_i em [min_w, max_w]
-      - Somatório dos pesos = 1
-      - Se acoes ochave e fiis não vazios, exige ao menos 1 de cada
+      - Soma dos pesos = 1 (sem clip/remap)
+      - Se `acoes` e `fiis` não-vazios, exige ao menos um de cada classe
       - Retorno composto anualizado via log-returns
       - Volatilidade anualizada via log-returns
     Retorna:
-      sim_ret  (np.ndarray): retornos compostos anualizados
-      sim_vol  (np.ndarray): volatilidades anualizadas
-      sim_w    (list[np.ndarray]): lista de arrays de pesos
-      sim_ticks(list[list[str]]): lista de tickers por carteira
+      sim_ret      : np.ndarray dos retornos a.a.
+      sim_vol      : np.ndarray das volatilidades a.a.
+      sim_w        : lista de arrays de pesos
+      sim_tickers  : lista de listas de tickers correspondentes
     """
+
     np.random.seed(seed)
 
-    # calcula log-returns e anualiza
+    # 1) Calcular log-returns diários e anualizar
     rets     = prices[tickers].pct_change().dropna()
     log_rets = np.log1p(rets)
-    mu_log   = log_rets.mean() * 252
-    cov_log  = log_rets.cov()  * 252
+    mu_log   = log_rets.mean() * 252       # expectativa de log-retorno a.a.
+    cov_log  = log_rets.cov()  * 252       # covariância de log-returns a.a.
 
-    sim_ret, sim_vol, sim_w, sim_ticks = [], [], [], []
-    attempts = 0
-    max_attempts = n_sim * 10
+    sim_ret, sim_vol, sim_w, sim_tickers = [], [], [], []
+    attempts, max_attempts = 0, n_sim * 10
 
+    # 2) Loop até ter n_sim carteiras válidas ou estourar tentativas
     while len(sim_ret) < n_sim and attempts < max_attempts:
         attempts += 1
 
-        # escolhe número e quais ativos
+        # 2.1) Escolhe quantos e quais ativos
         n_assets = np.random.randint(min_assets, max_assets + 1)
-        chosen   = np.random.choice(tickers, size=n_assets, replace=False)
+        chosen   = np.random.choice(tickers, n_assets, replace=False)
 
-        # exige pelo menos 1 ação e 1 FII se solicitado
+        # 2.2) Se exigido mix de ações + FIIs
         if acoes and fiis:
             if not (set(chosen) & acoes and set(chosen) & fiis):
                 continue
 
-        # gera pesos e rejeita fora dos limites
+        # 2.3) Gera pesos via Dirichlet e rejeita fora dos limites
         w = np.random.dirichlet([alpha_dirichlet] * n_assets)
         if (w < min_w).any() or (w > max_w).any():
             continue
 
-        # calcula métricas do portfólio
-        mu_vec  = mu_log.loc[chosen].values
-        cov_mat = cov_log.loc[chosen, chosen].values
+        # 3) Cálculo de retorno composto e volatilidade anualizados
+        mu_vec   = mu_log.loc[chosen].values
+        cov_mat  = cov_log.loc[chosen, chosen].values
 
-        port_log_ret = np.dot(w, mu_vec)
-        port_ret     = np.expm1(port_log_ret)
-        port_vol     = np.sqrt(w @ cov_mat @ w)
+        port_log = np.dot(w, mu_vec)           # log-retorno anual
+        port_ret = np.expm1(port_log)          # converte para retorno a.a.
+        port_vol = np.sqrt(w @ cov_mat @ w)    # volatilidade a.a.
 
+        # 4) Armazena
         sim_ret.append(port_ret)
         sim_vol.append(port_vol)
         sim_w.append(w)
-        sim_ticks.append(list(chosen))
+        sim_tickers.append(list(chosen))
 
     if attempts >= max_attempts:
         print(f"[WARNING] atingido {max_attempts} tentativas; geradas {len(sim_ret)} carteiras.")
@@ -164,7 +166,7 @@ def simulate_portfolios(
         np.array(sim_ret),
         np.array(sim_vol),
         sim_w,
-        sim_ticks
+        sim_tickers
     )
 
 def filtrar_por_composicao(ativos_simulados: list[list[str]], acoes: set, fiis: set):
@@ -1581,11 +1583,13 @@ def main():
 
         with col1:
             st.write("✅ **Ações carregadas:**")
-            st.write(acoes_display)
+            for i, ticker in enumerate(acoes_display, start=1):
+                st.write(f"{i}. {ticker}")
 
         with col2:
             st.write("✅ **FIIs carregados:**")
-            st.write(fii_display)
+            for i, ticker in enumerate(fii_display, start=1):
+                st.write(f"{i}. {ticker}")
 
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
                     
@@ -1638,33 +1642,27 @@ def main():
             st.session_state.simulacoes_realizadas = True
 
         # Simulação apenas com ações (sem exigir FII)
-        sim_ret_aco, sim_vol_aco, sim_pesos_aco, ativos_aco = simulate_portfolios(
-            prices_aco,
-            acoes_validos,
-            n_sim,
-            min_assets,
-            max_assets,
-            min_w,
-            max_w,
-            seed,
-            alpha_dirichlet,
-            acoes=set(),  # <- sem restrição
-            fiis=set()
+        sim_ret_aco, sim_vol_aco, sim_w_aco, ativos_aco = simulate_portfolios(
+            prices_aco, acoes_validos,
+            n_sim, min_assets, max_assets,
+            min_w, max_w, seed, alpha_dirichlet,
+            acoes=set(), fiis=set()
         )
 
+
         # Simulação apenas com FIIs (sem exigir ação)
-        sim_ret_fii, sim_vol_fii, sim_pesos_fii, ativos_fii = simulate_portfolios(
-            prices_fii,
-            fii_validos,
-            n_sim,
-            min_assets,
-            max_assets,
-            min_w,
-            max_w,
-            seed,
-            alpha_dirichlet,
-            acoes=set(),
-            fiis=set()
+        sim_ret_fii, sim_vol_fii, sim_w_fii, ativos_fii = simulate_portfolios(
+            prices_fii, fii_validos,
+            n_sim, min_assets, max_assets,
+            min_w, max_w, seed, alpha_dirichlet,
+            acoes=set(), fiis=set()
+        )
+
+        sim_ret_misto, sim_vol_misto, sim_w_misto, ativos_misto = simulate_portfolios(
+                prices_comb, acoes_validos + fii_validos,
+                n_sim, min_assets, max_assets,
+                min_w, max_w, seed, alpha_dirichlet,
+                acoes=set(acoes_validos), fiis=set(fii_validos)
         )
 
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
@@ -1686,12 +1684,12 @@ def main():
                 sharpe_vals = (ret_lin_aco - rf) / vol_lin_aco
                 best = np.nanargmax(sharpe_vals)
                 idx_sharpe_aco     = idxs[best]
-                w_sharpe_aco       = sim_pesos_aco[idx_sharpe_aco]
+                w_sharpe_aco       = sim_w_aco[idx_sharpe_aco]
                 ret_sh_aco, vol_sh_aco = sim_ret_aco[idx_sharpe_aco], sim_vol_aco[idx_sharpe_aco]
                 sharpe_liquida_aco = sharpe_vals[best]
             else:
                 w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = \
-                    pick_best_sim(sim_ret_aco, sim_vol_aco, sim_pesos_aco, rf)
+                    pick_best_sim(sim_ret_aco, sim_vol_aco, sim_w_aco, rf)
                 vol_lin_aco = ret_lin_aco = np.array([])
         else:
             vol_lin_aco = ret_lin_aco = np.array([])
@@ -1704,12 +1702,12 @@ def main():
                 sharpe_vals = (ret_lin_fii - rf) / vol_lin_fii
                 best = np.nanargmax(sharpe_vals)
                 idx_sharpe_fii     = idxs[best]
-                w_sharpe_fii       = sim_pesos_fii[idx_sharpe_fii]
+                w_sharpe_fii       = sim_w_fii[idx_sharpe_fii]
                 ret_sh_fii, vol_sh_fii = sim_ret_fii[idx_sharpe_fii], sim_vol_fii[idx_sharpe_fii]
                 sharpe_liquida_fii = sharpe_vals[best]
             else:
                 w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = \
-                    pick_best_sim(sim_ret_fii, sim_vol_fii, sim_pesos_fii, rf)
+                    pick_best_sim(sim_ret_fii, sim_vol_fii, sim_w_fii, rf)
                 vol_lin_fii = ret_lin_fii = np.array([])
         else:
             vol_lin_fii = ret_lin_fii = np.array([])
@@ -1722,12 +1720,12 @@ def main():
                 sharpe_vals = (ret_lin_comb - rf) / vol_lin_comb
                 best = np.nanargmax(sharpe_vals)
                 idx_sharpe_comb     = idxs[best]
-                w_sharpe_comb       = sim_pesos_misto[idx_sharpe_comb]
+                w_sharpe_comb       = sim_w_misto[idx_sharpe_comb]
                 ret_sh_comb, vol_sh_comb = sim_ret_misto[idx_sharpe_comb], sim_vol_misto[idx_sharpe_comb]
                 sharpe_liquida_comb = sharpe_vals[best]
             else:
                 w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
-                    pick_best_sim(sim_ret_misto, sim_vol_misto, sim_pesos_misto, rf)
+                    pick_best_sim(sim_ret_misto, sim_vol_misto, sim_w_misto, rf)
                 vol_lin_comb = ret_lin_comb = np.array([])
         else:
             vol_lin_comb = ret_lin_comb = np.array([])
