@@ -521,16 +521,16 @@ def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tic
 # =======================
 
 def plot_results(
-    sim_vol_aco, sim_ret_aco,
+    sim_vol_dyn_aco, sim_ret_dyn_aco,
     vol_lin_aco, ret_lin_aco,
     vol_sh_aco, ret_sh_aco,
-    sim_vol_fii, sim_ret_fii,
+    sim_vol_dyn_fii, sim_ret_dyn_fii,
     vol_lin_fii, ret_lin_fii,
     vol_sh_fii, ret_sh_fii,
-    sim_vol_comb, sim_ret_comb,
+    sim_vol_dyn_comb, sim_ret_dyn_comb,
     vol_lin_comb, ret_lin_comb,
     vol_sh_comb, ret_sh_comb,
-    vol_man,     ret_man,
+    vol_man, ret_man,
     vol_opt_manual, ret_opt_manual,
     vol_hibrida, ret_hibrida,
     tickers_man,
@@ -538,29 +538,29 @@ def plot_results(
 ):
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    # Monte Carlo clouds
-    if sim_vol_comb.size > 0:
-        ax.scatter(sim_vol_comb, sim_ret_comb,
+    # Monte Carlo clouds (compostos)
+    if sim_vol_dyn_comb.size > 0:
+        ax.scatter(sim_vol_dyn_comb, sim_ret_dyn_comb,
                    s=8, alpha=0.12, c='red')
-    if sim_vol_aco.size > 0:
-        ax.scatter(sim_vol_aco, sim_ret_aco,
+    if sim_vol_dyn_aco.size > 0:
+        ax.scatter(sim_vol_dyn_aco, sim_ret_dyn_aco,
                    s=8, alpha=0.12, c='blue')
-    if sim_vol_fii.size > 0:
-        ax.scatter(sim_vol_fii, sim_ret_fii,
+    if sim_vol_dyn_fii.size > 0:
+        ax.scatter(sim_vol_dyn_fii, sim_ret_dyn_fii,
                    s=8, alpha=0.12, c='green')
 
-    # Efficient frontier lines
+    # Efficient frontier lines (compostos)
     if vol_lin_comb.size > 0:
         ax.plot(vol_lin_comb, ret_lin_comb,
-                '--', c='red', lw=2)
+                '-', c='red', lw=2, label='Fronteira – Ações+FII')
     if vol_lin_aco.size > 0:
         ax.plot(vol_lin_aco, ret_lin_aco,
-                '--', c='blue', lw=2)
+                '-', c='blue', lw=2, label='Fronteira – Ações')
     if vol_lin_fii.size > 0:
         ax.plot(vol_lin_fii, ret_lin_fii,
-                '--', c='green', lw=2)
+                '-', c='green', lw=2, label='Fronteira – FIIs')
 
-    # Sharpe max stars
+    # Sharpe max stars (compostos)
     if not np.isnan(vol_sh_comb):
         ax.scatter(vol_sh_comb, ret_sh_comb,
                    marker='*', c='red', s=180,
@@ -599,9 +599,9 @@ def plot_results(
                    label='Carteira Híbrida')
 
     # Labels, title, legend
-    ax.set_xlabel("Volatilidade Anualizada")
+    ax.set_xlabel("Volatilidade Composta Anualizada")
     ax.set_ylabel("Retorno Composto Anualizado")
-    ax.set_title("Fronteira Eficiente (Retorno Composto Anualizado)")
+    ax.set_title("Fronteira Eficiente (Retorno Composto)")
     ax.legend(loc='best')
     ax.grid(True)
 
@@ -610,26 +610,26 @@ def plot_results(
     ax.xaxis.set_major_formatter(fmt)
     ax.yaxis.set_major_formatter(fmt)
 
-    # Axis limits
+    # Axis limits com base na nuvem dinâmica
     all_vols = []
     all_rets = []
-    for arr in (sim_vol_aco, sim_vol_fii, sim_vol_comb):
+    for arr in (sim_vol_dyn_aco, sim_vol_dyn_fii, sim_vol_dyn_comb):
         if hasattr(arr, 'size') and arr.size > 0:
             all_vols.append(arr.max())
-    for arr in (sim_ret_aco, sim_ret_fii, sim_ret_comb):
+    for arr in (sim_ret_dyn_aco, sim_ret_dyn_fii, sim_ret_dyn_comb):
         if hasattr(arr, 'size') and arr.size > 0:
             all_rets.append(arr.max())
             all_rets.append(arr.min())
 
     if all_vols and all_rets:
         max_v = max(all_vols) * 1.15
-        min_r = min(all_rets) * 1.15
-        max_r = max(all_rets) * 1.3
+        min_r = min(all_rets) * 0.85
+        max_r = max(all_rets) * 1.15
         ax.set_xlim(0, max_v)
         ax.set_ylim(min_r, max_r)
     else:
         st.warning(
-            "Não foi possível calcular limites do gráfico. "\
+            "Não foi possível calcular limites do gráfico. "
             "Verifique parâmetros de simulação."
         )
 
@@ -1667,100 +1667,122 @@ def main():
         set_acoes = set(acoes_validos)
         set_fiis = set(fii_validos)
 
-        # Simulação combinada (ações + FIIs) — com restrição de carteira mista
+        # ================================
+        # 1) Simulações (cache em session_state)
+        # ================================
         if "simulacoes_realizadas" not in st.session_state:
-            st.session_state.simulacoes_realizadas = False
-
-        if not st.session_state.simulacoes_realizadas:
-            st.session_state.sim_ret_comb, st.session_state.sim_vol_comb, st.session_state.sim_pesos_comb, st.session_state.ativos_comb = simulate_portfolios(
+            # combinado (Ações + FIIs)
+            (st.session_state.sim_ret_comb,
+            st.session_state.sim_vol_comb,
+            st.session_state.sim_w_comb,
+            st.session_state.sim_tickers_comb) = simulate_portfolios(
                 prices_comb,
                 acoes_validos + fii_validos,
-                n_sim,
-                min_assets,
-                max_assets,
-                min_w,
-                max_w,
-                seed,
-                alpha_dirichlet,
-                acoes=set_acoes,
-                fiis=set_fiis
-            )
-            st.session_state.simulacoes_realizadas = True
-
-
-        # Combinado (Ações + FIIs)
-        sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb = simulate_portfolios(
-            prices_comb,
-            acoes_validos + fii_validos,
-            n_sim, min_assets, max_assets,
-            min_w, max_w, seed, alpha_dirichlet,
-            acoes=set(acoes_validos), fiis=set(fii_validos)
-        )
-
-        # Simulação apenas com ações (sem exigir FII)
-        sim_ret_aco, sim_vol_aco, sim_w_aco, ativos_aco = simulate_portfolios(
-            prices_aco, acoes_validos,
-            n_sim, min_assets, max_assets,
-            min_w, max_w, seed, alpha_dirichlet,
-            acoes=set(), fiis=set()
-        )
-
-
-        # Simulação apenas com FIIs (sem exigir ação)
-        sim_ret_fii, sim_vol_fii, sim_w_fii, ativos_fii = simulate_portfolios(
-            prices_fii, fii_validos,
-            n_sim, min_assets, max_assets,
-            min_w, max_w, seed, alpha_dirichlet,
-            acoes=set(), fiis=set()
-        )
-
-        sim_ret_misto, sim_vol_misto, sim_w_misto, ativos_misto = simulate_portfolios(
-                prices_comb, acoes_validos + fii_validos,
                 n_sim, min_assets, max_assets,
                 min_w, max_w, seed, alpha_dirichlet,
                 acoes=set(acoes_validos), fiis=set(fii_validos)
-        )
+            )
 
+            # somente Ações
+            (st.session_state.sim_ret_aco,
+            st.session_state.sim_vol_aco,
+            st.session_state.sim_w_aco,
+            st.session_state.sim_tickers_aco) = simulate_portfolios(
+                prices_aco,
+                acoes_validos,
+                n_sim, min_assets, max_assets,
+                min_w, max_w, seed, alpha_dirichlet,
+                acoes=set(), fiis=set()
+            )
+
+            # somente FIIs
+            (st.session_state.sim_ret_fii,
+            st.session_state.sim_vol_fii,
+            st.session_state.sim_w_fii,
+            st.session_state.sim_tickers_fii) = simulate_portfolios(
+                prices_fii,
+                fii_validos,
+                n_sim, min_assets, max_assets,
+                min_w, max_w, seed, alpha_dirichlet,
+                acoes=set(), fiis=set()
+            )
+
+            st.session_state.simulacoes_realizadas = True
+
+        # recupera do cache
+        sim_ret_comb    = st.session_state.sim_ret_comb
+        sim_vol_comb    = st.session_state.sim_vol_comb
+        sim_w_comb      = st.session_state.sim_w_comb
+        sim_tickers_comb= st.session_state.sim_tickers_comb
+
+        sim_ret_aco     = st.session_state.sim_ret_aco
+        sim_vol_aco     = st.session_state.sim_vol_aco
+        sim_w_aco       = st.session_state.sim_w_aco
+        sim_tickers_aco = st.session_state.sim_tickers_aco
+
+        sim_ret_fii     = st.session_state.sim_ret_fii
+        sim_vol_fii     = st.session_state.sim_vol_fii
+        sim_w_fii       = st.session_state.sim_w_fii
+        sim_tickers_fii = st.session_state.sim_tickers_fii
+
+        # ================================
+        # 2) Cálculo de return & vol compostos
+        #    (dynamic_compound_portfolio_metrics)
+        # ================================
+        # Ações
+        sim_ret_dyn_aco = np.empty_like(sim_ret_aco)
+        sim_vol_dyn_aco = np.empty_like(sim_vol_aco)
+        for i, (w, ticks) in enumerate(zip(sim_w_aco, sim_tickers_aco)):
+            r, v = dynamic_compound_portfolio_metrics(prices_aco, w, ticks)
+            sim_ret_dyn_aco[i] = r
+            sim_vol_dyn_aco[i] = v
+
+        # FIIs
+        sim_ret_dyn_fii = np.empty_like(sim_ret_fii)
+        sim_vol_dyn_fii = np.empty_like(sim_vol_fii)
+        for i, (w, ticks) in enumerate(zip(sim_w_fii, sim_tickers_fii)):
+            r, v = dynamic_compound_portfolio_metrics(prices_fii, w, ticks)
+            sim_ret_dyn_fii[i] = r
+            sim_vol_dyn_fii[i] = v
+
+        # Combinado (Ações + FIIs)
+        sim_ret_dyn_comb = np.empty_like(sim_ret_comb)
+        sim_vol_dyn_comb = np.empty_like(sim_vol_comb)
+        for i, (w, ticks) in enumerate(zip(sim_w_comb, sim_tickers_comb)):
+            r, v = dynamic_compound_portfolio_metrics(prices_comb, w, ticks)
+            sim_ret_dyn_comb[i] = r
+            sim_vol_dyn_comb[i] = v
+
+
+        # Filtra por composição (só misto)
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
             sim_tickers_comb,
             set(acoes_validos),
             set(fii_validos)
         )
 
+        # apaga mistos inválidos
         if idx_misto:
-            sim_ret_comb    = sim_ret_comb[idx_misto]
-            sim_vol_comb    = sim_vol_comb[idx_misto]
-            sim_w_comb      = [sim_w_comb[i] for i in idx_misto]
-            sim_tickers_comb= [sim_tickers_comb[i] for i in idx_misto]
+            sim_ret_comb     = sim_ret_comb[idx_misto]
+            sim_vol_comb     = sim_vol_comb[idx_misto]
+            sim_w_comb       = [sim_w_comb[i] for i in idx_misto]
+            sim_tickers_comb = [sim_tickers_comb[i] for i in idx_misto]
         else:
-            # nenhum misto válido
             sim_ret_comb = np.array([])
             sim_vol_comb = np.array([])
             sim_w_comb   = []
             sim_tickers_comb = []
 
-
-       
-        # COMBINADO (filtrado a partir da simulação armazenada no session_state)
-        sim_ret_misto = filtrar_por_indices(st.session_state.sim_ret_comb, idx_misto)
-        sim_vol_misto = filtrar_por_indices(st.session_state.sim_vol_comb, idx_misto)
-        sim_pesos_misto = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_misto)
-        
-        sim_ret_comb = sim_ret_comb[idx_misto]
-        sim_vol_comb = sim_vol_comb[idx_misto]
-        sim_w_comb   = [sim_w_comb[i] for i in idx_misto]
-        sim_tickers_comb = [sim_tickers_comb[i] for i in idx_misto]
-
-        tickers_comb = acoes_validos + fii_validos
-
-        # ——— AÇÕES ———
+        # Ações
         if sim_vol_aco.size > 0:
-            vol_lin_aco, ret_lin_aco, idxs = convex_frontier_with_indices(sim_vol_aco, sim_ret_aco)
+            vol_lin_aco, ret_lin_aco, idxs = convex_frontier_with_indices(
+                sim_vol_aco, sim_ret_aco
+            )
             if vol_lin_aco.size > 0:
-                sharpe_vals = (ret_lin_aco - rf) / vol_lin_aco
-                best = np.nanargmax(sharpe_vals)
-                idx_sharpe_aco     = idxs[best]
-                w_sharpe_aco       = sim_w_aco[idx_sharpe_aco]
+                sharpe_vals     = (ret_lin_aco - rf) / vol_lin_aco
+                best            = np.nanargmax(sharpe_vals)
+                idx_sharpe_aco  = idxs[best]
+                w_sharpe_aco    = sim_w_aco[idx_sharpe_aco]
                 ret_sh_aco, vol_sh_aco = sim_ret_aco[idx_sharpe_aco], sim_vol_aco[idx_sharpe_aco]
                 sharpe_liquida_aco = sharpe_vals[best]
             else:
@@ -1771,14 +1793,16 @@ def main():
             vol_lin_aco = ret_lin_aco = np.array([])
             w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
 
-        # ——— FIIs ———
+        # FIIs
         if sim_vol_fii.size > 0:
-            vol_lin_fii, ret_lin_fii, idxs = convex_frontier_with_indices(sim_vol_fii, sim_ret_fii)
+            vol_lin_fii, ret_lin_fii, idxs = convex_frontier_with_indices(
+                sim_vol_fii, sim_ret_fii
+            )
             if vol_lin_fii.size > 0:
-                sharpe_vals = (ret_lin_fii - rf) / vol_lin_fii
-                best = np.nanargmax(sharpe_vals)
-                idx_sharpe_fii     = idxs[best]
-                w_sharpe_fii       = sim_w_fii[idx_sharpe_fii]
+                sharpe_vals     = (ret_lin_fii - rf) / vol_lin_fii
+                best            = np.nanargmax(sharpe_vals)
+                idx_sharpe_fii  = idxs[best]
+                w_sharpe_fii    = sim_w_fii[idx_sharpe_fii]
                 ret_sh_fii, vol_sh_fii = sim_ret_fii[idx_sharpe_fii], sim_vol_fii[idx_sharpe_fii]
                 sharpe_liquida_fii = sharpe_vals[best]
             else:
@@ -1789,10 +1813,8 @@ def main():
             vol_lin_fii = ret_lin_fii = np.array([])
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
-        # FRONTEIRA + SHARPE MÁXIMO – COMBINADO
+        # Combinado (Ações + FIIs)
         if sim_vol_comb.size > 0:
-
-            # 1) Constrói fronteira eficiente composta (sem extrapolar)
             vol_lin_comb, ret_lin_comb, idx_sharpe_comb, _ = build_efficient_frontier_compound(
                 sim_vol_comb,
                 sim_ret_comb,
@@ -1802,24 +1824,19 @@ def main():
                 rf
             )
 
-            # 2) Decide índice do ponto de Sharpe Máx
             if idx_sharpe_comb is not None:
                 idx = int(idx_sharpe_comb)
             else:
-                # fallback: escolhe pela simulação direta
                 sharpe_vals = (sim_ret_comb - rf) / sim_vol_comb
                 idx         = np.nanargmax(sharpe_vals)
 
-            # 3) Extrai pesos e tickers a partir de sim_tickers_comb
             w_sharpe_comb = sim_w_comb[idx]
             ticks_comb    = sim_tickers_comb[idx]
 
-            # 4) Recalcula retorno e volatilidade compostos
             ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
                 prices_comb, w_sharpe_comb, ticks_comb
             )
             sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
-
         else:
             vol_lin_comb = ret_lin_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
@@ -2074,12 +2091,14 @@ def main():
 
         # Sharpe Máx – Ações
         if not np.isnan(vol_sh_aco):
-            ticks = ativos_aco[idx_sharpe_aco]
+            ticks = sim_tickers_aco[idx_sharpe_aco]
             # Debug: aritmético vs composto vs passado
             rets_aco = prices_aco[ticks].pct_change().dropna()
             mu_arith = rets_aco.mean() * 252
             w_dot_mu = np.dot(w_sharpe_aco, mu_arith.values)
-            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(prices_aco, w_sharpe_aco, ticks)
+            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
+                prices_aco, w_sharpe_aco, ticks
+            )
             st.write("🏷️ Sharpe Máx – Ações")
             st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
             st.write(f"   ret_passado = {ret_sh_aco:.2%} | vol_passado = {vol_sh_aco:.2%}")
@@ -2097,12 +2116,14 @@ def main():
 
         # Sharpe Máx – FIIs
         if not np.isnan(vol_sh_fii):
-            ticks = ativos_fii[idx_sharpe_fii]
+            ticks = sim_tickers_fii[idx_sharpe_fii]
             # Debug: aritmético vs composto vs passado
             rets_fii = prices_fii[ticks].pct_change().dropna()
             mu_arith = rets_fii.mean() * 252
             w_dot_mu = np.dot(w_sharpe_fii, mu_arith.values)
-            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(prices_fii, w_sharpe_fii, ticks)
+            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
+                prices_fii, w_sharpe_fii, ticks
+            )
             st.write("🏷️ Sharpe Máx – FIIs")
             st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
             st.write(f"   ret_passado = {ret_sh_fii:.2%} | vol_passado = {vol_sh_fii:.2%}")
@@ -2125,7 +2146,9 @@ def main():
             rets_comb = prices_comb[ticks].pct_change().dropna()
             mu_arith  = rets_comb.mean() * 252
             w_dot_mu  = np.dot(w_sharpe_comb, mu_arith.values)
-            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(prices_comb, w_sharpe_comb, ticks)
+            ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
+                prices_comb, w_sharpe_comb, ticks
+            )
             st.write("🏷️ Sharpe Máx – Ações + FIIs")
             st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
             st.write(f"   ret_passado = {ret_sh_comb:.2%} | vol_passado = {vol_sh_comb:.2%}")
