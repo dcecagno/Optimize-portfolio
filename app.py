@@ -1966,7 +1966,15 @@ def main():
             st.warning("Nenhum ticker válido foi inserido na carteira manual.")
             ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
+        rets = prices_comb[tickers_hibrida].pct_change().dropna()
+        mu_arith = rets.mean() * 252
 
+        st.write("➜ Tickers Híbrida:", tickers_hibrida)
+        st.write("➜ Pesos Híbrida:", w_hibrida)
+        st.write("➜ Retornos aritméticos (aa):", mu_arith.to_dict())
+        st.write("➜ w @ mu_arith       =", np.dot(w_hibrida, mu_arith.values))
+        st.write("➜ ret_hibrida da função =", ret_hibrida)
+        
         # 12) Estatísticas individuais por ticker
         stats = []
 
