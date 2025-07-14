@@ -1582,14 +1582,14 @@ def main():
         col1, col2 = st.columns(2)
 
         with col1:
-            st.write("✅ **Ações carregadas:**")
-            for i, ticker in enumerate(acoes_display, start=1):
-                st.write(f"{i}. {ticker}")
+            with st.expander("✅ **Ações carregadas:**", expanded=True):
+                for i, ticker in enumerate(acoes_display, start=1):
+                    st.markdown(f"{i}. {ticker}")
 
         with col2:
-            st.write("✅ **FIIs carregados:**")
-            for i, ticker in enumerate(fii_display, start=1):
-                st.write(f"{i}. {ticker}")
+            with st.expander("✅ **FIIs carregados:**", expanded=True):
+                for i, ticker in enumerate(fii_display, start=1):
+                    st.markdown(f"{i}. {ticker}")
 
         st.write("[LOG] Carregando o gráfico. Aguarde alguns minutos!")
                     
@@ -1666,8 +1666,9 @@ def main():
         )
 
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
-            st.session_state.ativos_comb, set_acoes, set_fiis
+            sim_tickers_comb, set(acoes_validos), set(fii_validos)
         )
+
 
        
         # COMBINADO (filtrado a partir da simulação armazenada no session_state)
@@ -1675,6 +1676,11 @@ def main():
         sim_vol_misto = filtrar_por_indices(st.session_state.sim_vol_comb, idx_misto)
         sim_pesos_misto = filtrar_por_indices(st.session_state.sim_pesos_comb, idx_misto)
         
+        sim_ret_comb = sim_ret_comb[idx_misto]
+        sim_vol_comb = sim_vol_comb[idx_misto]
+        sim_w_comb   = [sim_w_comb[i] for i in idx_misto]
+        sim_tickers_comb = [sim_tickers_comb[i] for i in idx_misto]
+
         tickers_comb = acoes_validos + fii_validos
 
         # ——— AÇÕES ———
@@ -1713,22 +1719,25 @@ def main():
             vol_lin_fii = ret_lin_fii = np.array([])
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
-        # ——— COMBINADO (Ações + FIIs) ———
-        if sim_vol_misto.size > 0:
-            vol_lin_comb, ret_lin_comb, idxs = convex_frontier_with_indices(sim_vol_misto, sim_ret_misto)
+        # FRONTEIRA + SHARPE MÁXIMO – COMBINADO
+        if sim_vol_comb.size > 0:
+            vol_lin_comb, ret_lin_comb, idxs = convex_frontier_with_indices(
+                sim_vol_comb, sim_ret_comb
+            )
             if vol_lin_comb.size > 0:
                 sharpe_vals = (ret_lin_comb - rf) / vol_lin_comb
                 best = np.nanargmax(sharpe_vals)
                 idx_sharpe_comb     = idxs[best]
-                w_sharpe_comb       = sim_w_misto[idx_sharpe_comb]
-                ret_sh_comb, vol_sh_comb = sim_ret_misto[idx_sharpe_comb], sim_vol_misto[idx_sharpe_comb]
+                w_sharpe_comb       = sim_w_comb[idx_sharpe_comb]
+                ret_sh_comb         = sim_ret_comb[idx_sharpe_comb]
+                vol_sh_comb         = sim_vol_comb[idx_sharpe_comb]
                 sharpe_liquida_comb = sharpe_vals[best]
             else:
                 w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
-                    pick_best_sim(sim_ret_misto, sim_vol_misto, sim_w_misto, rf)
-                vol_lin_comb = ret_lin_comb = np.array([])
+                    pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
+                vol_lin_comb, ret_lin_comb = np.array([]), np.array([])
         else:
-            vol_lin_comb = ret_lin_comb = np.array([])
+            vol_lin_comb, ret_lin_comb = np.array([]), np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
 
         
@@ -1959,7 +1968,7 @@ def main():
             sim_vol_fii, sim_ret_fii,
             vol_lin_fii, ret_lin_fii,
             vol_sh_fii, ret_sh_fii,
-            sim_vol_misto, sim_ret_misto,
+            sim_vol_comb, sim_ret_comb,
             vol_lin_comb, ret_lin_comb,
             vol_sh_comb, ret_sh_comb,
             vol_man, ret_man,
