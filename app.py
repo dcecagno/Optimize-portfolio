@@ -260,94 +260,93 @@ def otimizar_carteira_hibrida(
     prices: pd.DataFrame,
     percentual_adicional: float,
     rf: float,
-    min_w: float,
     max_w: float,
     eps: float = 1e-6
 ) -> tuple[list[str], np.ndarray, float, float, float]:
     """
-    Otimiza a carteira híbrida:
+    Otimiza carteira híbrida:
+      - cada manual fixado em  frac_man * w_man
+      - novos ativos livres em [0, max_w]
       - soma dos pesos = 1
-      - cada manual “fixo” em frac_man * w_man_original (por bound)
-      - ativos novos em [min_w, max_w]
-      - calcula retorno/vol via log-returns + expm1
-    Retorna: (tickers_incl, w_incl, ret, vol, sharpe)
+      - retorno/vol por log-returns + expm1
     """
 
-    # 1) Pesos originais da carteira manual
+    # 1) pesos originais
     total_man = sum(valores_man)
-    w_man     = np.array([v / total_man for v in valores_man])
+    w_man     = np.array([v/total_man for v in valores_man])
 
-    # 2) Universo total (manuais + todos os outros)
+    # 2) universo completo
     tickers_total = tickers_man + [t for t in prices.columns if t not in tickers_man]
     tickers_total = list(dict.fromkeys(tickers_total))
     n = len(tickers_total)
     idx_man = [tickers_total.index(t) for t in tickers_man]
 
-    # 3) Log-returns anuais
+    # 3) log-returns anualizados
     rets     = prices[tickers_total].pct_change().dropna()
     log_rets = np.log1p(rets)
     mu_log   = log_rets.mean() * 252
     cov_log  = log_rets.cov()  * 252
     μ, Σ     = mu_log.values, cov_log.values
 
-    # 4) Fração do capital antigo
+    # 4) fração do capital antigo
     frac_man = 1.0 / (1.0 + percentual_adicional)
 
-    # 5) Função negativa de Sharpe
+    # 5) negativa de Sharpe
     def neg_sharpe(w):
         port_log = w @ μ
         port_ret = np.expm1(port_log)
         port_vol = np.sqrt(w @ Σ @ w)
         return -(port_ret - rf) / port_vol
 
-    # 6) Monta os bounds
-    bounds = [(None, None)] * n
+    # 6) bounds: manuais fixos, novos em [0, max_w]
+    bounds = []
     for j, im in enumerate(idx_man):
         target = frac_man * w_man[j]
-        bounds[im] = (target, target)
+        bounds.append((target, target))
+    # para os demais:
     for i in range(n):
         if i not in idx_man:
-            bounds[i] = (min_w, max_w)
+            bounds.append((0.0, max_w))
 
-    # 7) Apenas 1 constraint: soma dos pesos = 1
+    # 7) constraint única: soma(w)=1
     cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
 
-    # 8) Chute inicial
+    # 8) chute inicial
     x0 = np.zeros(n)
     for j, im in enumerate(idx_man):
         x0[im] = frac_man * w_man[j]
-    resto = 1 - x0.sum()
+    resto = 1.0 - x0.sum()
     if resto > 0:
-        livres = [i for i in range(n) if i not in idx_man]
-        for i in livres:
-            x0[i] = resto / len(livres)
+        novos = [i for i in range(n) if i not in idx_man]
+        # preenche todo o resto num único novo (poderia distribuir igualmente, mas não importa)
+        x0[novos[0]] = resto
 
-    # 9) Otimização
-    result = minimize(
+    # 9) otimiza
+    res = minimize(
         neg_sharpe,
         x0,
         method="SLSQP",
         bounds=bounds,
         constraints=cons
     )
-    if not result.success:
-        raise RuntimeError("Otimização híbrida falhou: " + result.message)
+    if not res.success:
+        raise RuntimeError("Otimização híbrida falhou: " + res.message)
 
-    # 10) Extração das métricas
-    w_opt    = result.x
+    # 10) métricas
+    w_opt    = res.x
     port_log = w_opt @ μ
     ret_opt  = float(np.expm1(port_log))
     vol_opt  = float(np.sqrt(w_opt @ Σ @ w_opt))
     sharpe_opt = (ret_opt - rf) / vol_opt
 
-    # 11) Filtra só ativos com peso > eps e renormaliza
+    # 11) filtra só ativos não-nulos e renormaliza
     mask = w_opt > eps
     tickers_incl = [t for t, m in zip(tickers_total, mask) if m]
     w_incl       = w_opt[mask]
     w_incl      /= w_incl.sum()
 
     return tickers_incl, w_incl, ret_opt, vol_opt, sharpe_opt
-  
+ 
 def pick_best_sim(
         sim_ret, 
         sim_vol, 
