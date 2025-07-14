@@ -1753,6 +1753,18 @@ def main():
             sim_ret_dyn_comb[i] = r
             sim_vol_dyn_comb[i] = v
 
+        # 3) Constrói a fronteira convexa em cima da nuvem composta
+        vol_lin_dyn_aco, ret_lin_dyn_aco, _ = convex_frontier_with_indices(
+            sim_vol_dyn_aco, sim_ret_dyn_aco
+        )
+        vol_lin_dyn_fii, ret_lin_dyn_fii, _ = convex_frontier_with_indices(
+            sim_vol_dyn_fii, sim_ret_dyn_fii
+        )
+        vol_lin_dyn_comb, ret_lin_dyn_comb, _ = convex_frontier_with_indices(
+            sim_vol_dyn_comb, sim_ret_dyn_comb
+        )
+
+
 
         # Filtra por composição (só misto)
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
@@ -2069,13 +2081,13 @@ def main():
         # Plotagem
         plot_results(
             sim_vol_dyn_aco, sim_ret_dyn_aco,
-            vol_lin_aco, ret_lin_aco,
+            vol_lin_dyn_aco, ret_lin_dyn_aco,
             vol_sh_aco, ret_sh_aco,
             sim_vol_dyn_fii, sim_ret_dyn_fii,
-            vol_lin_fii, ret_lin_fii,
+            vol_lin_dyn_fii, ret_lin_dyn_fii,
             vol_sh_fii, ret_sh_fii,
             sim_vol_dyn_comb, sim_ret_dyn_comb,
-            vol_lin_comb, ret_lin_comb,
+            vol_lin_dyn_comb, ret_lin_dyn_comb,
             vol_sh_comb, ret_sh_comb,
             vol_man, ret_man,
             vol_opt_manual, ret_opt_manual,
@@ -2083,6 +2095,7 @@ def main():
             tickers_man,
             ret_anual_ibov, vol_anual_ibov
         )
+
 
         # ================================
         # 1) Montagem de todos os cenários
