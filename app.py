@@ -71,58 +71,95 @@ def filtrar_valid_tickers(prices: pd.DataFrame, tickers: list, min_obs: int = 20
 # =======================
 
 def dynamic_compound_portfolio_metrics(prices, weights, tickers):
-    prices = prices[tickers]
-    rets = prices.pct_change().dropna()
-    rets_comp = (1 + rets).prod() ** (252 / len(rets)) - 1
-    mu = rets_comp.values
-    cov = rets.cov().values * 252
-    ret = np.dot(weights, mu)
-    vol = np.sqrt(weights @ cov @ weights)
-    return ret, vol
+    # 1) pega retornos diários e transforma em log-returns
+    rets = prices[tickers].pct_change().dropna()
+    log_rets = np.log1p(rets)
+
+    # 2) anualiza média e covariância
+    mu_log  = log_rets.mean() * 252
+    cov_log = log_rets.cov()  * 252
+
+    # 3) portfólio em log-retorno + converte pra composto
+    port_log_ret = np.dot(weights, mu_log.values)
+    port_ret     = np.expm1(port_log_ret)
+
+    # 4) volatilidade anual
+    port_vol     = np.sqrt(weights @ cov_log.values @ weights)
+
+    return port_ret, port_vol
 
 def simulate_portfolios(
-    prices, tickers, n_sim, min_assets, max_assets, min_w, max_w,
-    seed, alpha_dirichlet, acoes=set(), fiis=set()
+    prices: pd.DataFrame,
+    tickers: list[str],
+    n_sim: int,
+    min_assets: int,
+    max_assets: int,
+    min_w: float,
+    max_w: float,
+    seed: int = 42,
+    alpha_dirichlet: float = 1.0,
+    acoes: set[str] = set(),
+    fiis: set[str] = set()
 ):
+    """
+    Simula n_sim carteiras respeitando:
+      - Número de ativos em [min_assets, max_assets]
+      - Cada peso w_i em [min_w, max_w]
+      - Somatório dos pesos = 1
+      - Se acoes ochave e fiis não vazios, exige ao menos 1 de cada
+      - Retorno composto anualizado via log-returns
+      - Volatilidade anualizada via log-returns
+    Retorna:
+      sim_ret  (np.ndarray): retornos compostos anualizados
+      sim_vol  (np.ndarray): volatilidades anualizadas
+      sim_w    (list[np.ndarray]): lista de arrays de pesos
+      sim_ticks(list[list[str]]): lista de tickers por carteira
+    """
     np.random.seed(seed)
-    rets = prices.pct_change().dropna()
-    rets_comp = (1 + rets).prod() ** (252 / len(rets))
-    cov = rets.cov() * 252
+
+    # calcula log-returns e anualiza
+    rets     = prices[tickers].pct_change().dropna()
+    log_rets = np.log1p(rets)
+    mu_log   = log_rets.mean() * 252
+    cov_log  = log_rets.cov()  * 252
 
     sim_ret, sim_vol, sim_w, sim_ticks = [], [], [], []
     attempts = 0
-    max_attempts = n_sim * 10  # evita loop infinito
+    max_attempts = n_sim * 10
 
     while len(sim_ret) < n_sim and attempts < max_attempts:
         attempts += 1
 
-        # escolhe ativos
+        # escolhe número e quais ativos
         n_assets = np.random.randint(min_assets, max_assets + 1)
-        chosen = np.random.choice(tickers, size=n_assets, replace=False)
+        chosen   = np.random.choice(tickers, size=n_assets, replace=False)
 
-        # força pelo menos 1 ação e 1 FII, se desejado
+        # exige pelo menos 1 ação e 1 FII se solicitado
         if acoes and fiis:
             if not (set(chosen) & acoes and set(chosen) & fiis):
                 continue
 
-        # Gera pesos e rejeita se fora dos limites
+        # gera pesos e rejeita fora dos limites
         w = np.random.dirichlet([alpha_dirichlet] * n_assets)
         if (w < min_w).any() or (w > max_w).any():
             continue
 
-        # OK: aceita
-        mu_vec = rets_comp[chosen].values
-        cov_mat = cov.loc[chosen, chosen].values
+        # calcula métricas do portfólio
+        mu_vec  = mu_log.loc[chosen].values
+        cov_mat = cov_log.loc[chosen, chosen].values
 
-        port_ret = np.dot(w, mu_vec)
-        port_vol = np.sqrt(w @ cov_mat @ w)
+        port_log_ret = np.dot(w, mu_vec)
+        port_ret     = np.expm1(port_log_ret)
+        port_vol     = np.sqrt(w @ cov_mat @ w)
 
         sim_ret.append(port_ret)
         sim_vol.append(port_vol)
         sim_w.append(w)
         sim_ticks.append(list(chosen))
 
-    # converte p/ numpy
+    if attempts >= max_attempts:
+        print(f"[WARNING] atingido {max_attempts} tentativas; geradas {len(sim_ret)} carteiras.")
+
     return (
         np.array(sim_ret),
         np.array(sim_vol),
