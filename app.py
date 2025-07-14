@@ -1733,9 +1733,9 @@ def main():
         sim_ret_dyn_aco = np.empty_like(sim_ret_aco)
         sim_vol_dyn_aco = np.empty_like(sim_vol_aco)
         for i, (w, ticks) in enumerate(zip(sim_w_aco, sim_tickers_aco)):
-            r, v = dynamic_compound_portfolio_metrics(prices_aco, w, ticks)
-            sim_ret_dyn_aco[i] = r
-            sim_vol_dyn_aco[i] = v
+            r_dyn, v_dyn = dynamic_compound_portfolio_metrics(prices_aco, w, ticks)
+            sim_ret_dyn_aco[i] = r_dyn
+            sim_vol_dyn_aco[i] = v_dyn
 
         # FIIs
         sim_ret_dyn_fii = np.empty_like(sim_ret_fii)
@@ -1754,7 +1754,7 @@ def main():
             sim_vol_dyn_comb[i] = v
 
         # 3) Constrói a fronteira convexa em cima da nuvem composta
-        vol_lin_dyn_aco, ret_lin_dyn_aco, _ = convex_frontier_with_indices(
+        vol_lin_dyn_aco, ret_lin_dyn_aco, hull_idxs_aco = convex_frontier_with_indices(
             sim_vol_dyn_aco, sim_ret_dyn_aco
         )
         vol_lin_dyn_fii, ret_lin_dyn_fii, _ = convex_frontier_with_indices(
@@ -1786,24 +1786,25 @@ def main():
             sim_tickers_comb = []
 
         # Ações
-        if sim_vol_aco.size > 0:
-            vol_lin_aco, ret_lin_aco, idxs = convex_frontier_with_indices(
-                sim_vol_aco, sim_ret_aco
+        if vol_lin_dyn_aco.size > 0:
+            sharpe_vals_aco = (ret_lin_dyn_aco - rf) / vol_lin_dyn_aco
+            best_aco        = np.nanargmax(sharpe_vals_aco)
+            idx_sharpe_aco  = hull_idxs_aco[best_aco]
+            w_sharpe_aco    = sim_w_aco[idx_sharpe_aco]
+            ticks_aco       = sim_tickers_aco[idx_sharpe_aco]
+            # Já temos ret/vol compostos para cada simulação,
+            # mas vamos recomputar para o ponto ótimo
+            ret_sh_aco, vol_sh_aco = dynamic_compound_portfolio_metrics(
+                prices_aco, w_sharpe_aco, ticks_aco
             )
-            if vol_lin_aco.size > 0:
-                sharpe_vals     = (ret_lin_aco - rf) / vol_lin_aco
-                best            = np.nanargmax(sharpe_vals)
-                idx_sharpe_aco  = idxs[best]
-                w_sharpe_aco    = sim_w_aco[idx_sharpe_aco]
-                ret_sh_aco, vol_sh_aco = sim_ret_aco[idx_sharpe_aco], sim_vol_aco[idx_sharpe_aco]
-                sharpe_liquida_aco = sharpe_vals[best]
-            else:
-                w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = \
-                    pick_best_sim(sim_ret_aco, sim_vol_aco, sim_w_aco, rf)
-                vol_lin_aco = ret_lin_aco = np.array([])
+            sharpe_liquida_aco = (ret_sh_aco - rf) / vol_sh_aco
         else:
-            vol_lin_aco = ret_lin_aco = np.array([])
-            w_sharpe_aco = ret_sh_aco = vol_sh_aco = sharpe_liquida_aco = np.nan
+            # fallback cuida dos casos degenerados
+            w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = \
+                pick_best_sim(sim_ret_aco, sim_vol_aco, sim_w_aco, rf)
+            vol_lin_dyn_aco = ret_lin_dyn_aco = np.array([])
+            ticks_aco = []
+
 
         # FIIs
         if sim_vol_fii.size > 0:
