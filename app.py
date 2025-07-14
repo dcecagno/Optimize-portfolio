@@ -262,41 +262,34 @@ def otimizar_carteira_hibrida(
     rf: float,
     eps: float = 1e-6
 ) -> tuple[list[str], np.ndarray, float, float, float]:
-    # 1) pesos originais
     total_man = sum(valores_man)
     w_man     = np.array([v/total_man for v in valores_man])
 
-    # 2) universo total
     tickers_total = tickers_man + [t for t in prices.columns if t not in tickers_man]
     tickers_total = list(dict.fromkeys(tickers_total))
     n = len(tickers_total)
     idx_man = [tickers_total.index(t) for t in tickers_man]
 
-    # 3) log-returns e anualização
     rets     = prices[tickers_total].pct_change().dropna()
     log_rets = np.log1p(rets)
     mu_log   = log_rets.mean() * 252
     cov_log  = log_rets.cov()  * 252
     μ, Σ     = mu_log.values, cov_log.values
 
-    # 4) quanto do peso vai para o manual
     frac_man = 1.0/(1.0+percentual_adicional)
 
-    # 5) negativa de Sharpe via log-returns
     def neg_sharpe(w):
         port_log = w @ μ
         port_ret = np.expm1(port_log)
         port_vol = np.sqrt(w @ Σ @ w)
-        return -(port_ret - rf)/port_vol
+        return -(port_ret - rf) / port_vol
 
-    # 6) bounds e constraints
     bounds = [(0.0,1.0)]*n
     cons   = [
-        {"type":"eq", "fun": lambda w: w.sum()-1.0},
-        {"type":"eq","fun": lambda w: w[idx_man].sum()-frac_man}
+        {"type":"eq", "fun": lambda w: w.sum() - 1.0},
+        {"type":"eq", "fun": lambda w: w[idx_man].sum() - frac_man}
     ]
 
-    # 7) chute inicial
     x0 = np.zeros(n)
     for j,im in enumerate(idx_man):
         x0[im] = frac_man * w_man[j]
@@ -306,23 +299,21 @@ def otimizar_carteira_hibrida(
         for i in livres:
             x0[i] = resto/len(livres)
 
-    # 8) otimiza
     res = minimize(neg_sharpe, x0, method="SLSQP",
                    bounds=bounds, constraints=cons)
     if not res.success:
         raise RuntimeError("Híbrida falhou: "+res.message)
 
-    w_opt = res.x
+    w_opt    = res.x
     port_log = w_opt @ μ
     ret_opt  = float(np.expm1(port_log))
     vol_opt  = float(np.sqrt(w_opt @ Σ @ w_opt))
-    sharpe_opt = (ret_opt - rf)/vol_opt
+    sharpe_opt = (ret_opt - rf) / vol_opt
 
-    # 9) filtra só pesos > eps
-    mask = w_opt>eps
+    mask = w_opt > eps
     tickers_incl = [t for t,m in zip(tickers_total,mask) if m]
-    w_incl = w_opt[mask]
-    w_incl /= w_incl.sum()
+    w_incl       = w_opt[mask]
+    w_incl       /= w_incl.sum()
 
     return tickers_incl, w_incl, ret_opt, vol_opt, sharpe_opt
 
