@@ -254,9 +254,6 @@ def rebalance_weights(weights, min_w=0.03):
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
 
-import numpy as np
-from scipy.optimize import minimize
-
 def otimizar_carteira_hibrida(
     tickers_man: list[str],
     valores_man: list[float],
@@ -265,26 +262,12 @@ def otimizar_carteira_hibrida(
     rf: float,
     eps: float = 1e-6
 ) -> tuple[list[str], np.ndarray, float, float, float]:
-    """
-    Monta a lista tickers_total = tickers_man + todos os outros de prices.
-    Preserva 1/(1+p_add) do capital em tickers_man e injeta p_add/(1+p_add) no resto.
-    Otimiza Sharpe via log-returns e, no final, retorna só os ativos com peso > eps.
-
-    Retorna:
-      tickers_incl: lista de tickers cujo peso w > eps
-      w_incl      : array de pesos correspondentes (somam 1)
-      ret_opt     : retorno composto anualizado da carteira
-      vol_opt     : volatilidade anualizada da carteira
-      sharpe_opt  : (ret_opt - rf) / vol_opt
-    """
-
     # 1) pesos originais
     total_man = sum(valores_man)
     w_man     = np.array([v/total_man for v in valores_man])
 
     # 2) universo total
     tickers_total = tickers_man + [t for t in prices.columns if t not in tickers_man]
-    # remove duplicatas mantendo ordem
     tickers_total = list(dict.fromkeys(tickers_total))
     n = len(tickers_total)
     idx_man = [tickers_total.index(t) for t in tickers_man]
@@ -292,60 +275,54 @@ def otimizar_carteira_hibrida(
     # 3) log-returns e anualização
     rets     = prices[tickers_total].pct_change().dropna()
     log_rets = np.log1p(rets)
-    mu_log   = log_rets.mean() * 252           # vetor μ (log-ret a.a.)
-    cov_log  = log_rets.cov()  * 252           # matriz Σ (log-ret a.a.)
-    μ = mu_log.values
-    Σ = cov_log.values
+    mu_log   = log_rets.mean() * 252
+    cov_log  = log_rets.cov()  * 252
+    μ, Σ     = mu_log.values, cov_log.values
 
-    # 4) quanto do peso total vai para a carteira manual original
-    frac_man = 1.0 / (1.0 + percentual_adicional)
+    # 4) quanto do peso vai para o manual
+    frac_man = 1.0/(1.0+percentual_adicional)
 
     # 5) negativa de Sharpe via log-returns
     def neg_sharpe(w):
         port_log = w @ μ
         port_ret = np.expm1(port_log)
         port_vol = np.sqrt(w @ Σ @ w)
-        return -(port_ret - rf) / port_vol
+        return -(port_ret - rf)/port_vol
 
     # 6) bounds e constraints
-    bounds = [(0.0, 1.0)] * n
-    cons = [
-        {"type": "eq", "fun": lambda w: w.sum() - 1.0},
-        {"type": "eq", "fun": lambda w: w[idx_man].sum() - frac_man}
+    bounds = [(0.0,1.0)]*n
+    cons   = [
+        {"type":"eq", "fun": lambda w: w.sum()-1.0},
+        {"type":"eq","fun": lambda w: w[idx_man].sum()-frac_man}
     ]
 
-    # 7) chute inicial:
+    # 7) chute inicial
     x0 = np.zeros(n)
-    # 7.1 preenche os manuais
-    for j, im in enumerate(idx_man):
+    for j,im in enumerate(idx_man):
         x0[im] = frac_man * w_man[j]
-    # 7.2 o resto distribuído igualmente
     resto = 1.0 - x0.sum()
-    if resto > 0:
+    if resto>0:
         livres = [i for i in range(n) if i not in idx_man]
         for i in livres:
-            x0[i] = resto / len(livres)
+            x0[i] = resto/len(livres)
 
     # 8) otimiza
     res = minimize(neg_sharpe, x0, method="SLSQP",
                    bounds=bounds, constraints=cons)
     if not res.success:
-        raise RuntimeError("Otimização híbrida falhou: " + res.message)
+        raise RuntimeError("Híbrida falhou: "+res.message)
 
     w_opt = res.x
-
-    # 9) métricas finais
     port_log = w_opt @ μ
     ret_opt  = float(np.expm1(port_log))
     vol_opt  = float(np.sqrt(w_opt @ Σ @ w_opt))
-    sharpe_opt = (ret_opt - rf) / vol_opt
+    sharpe_opt = (ret_opt - rf)/vol_opt
 
-    # 10) filtra só ativos de peso > eps
-    mask = w_opt > eps
-    tickers_incl = [t for t, m in zip(tickers_total, mask) if m]
-    w_incl       = w_opt[mask]
-    # re‐normaliza só por via das dúvidas
-    w_incl      /= w_incl.sum()
+    # 9) filtra só pesos > eps
+    mask = w_opt>eps
+    tickers_incl = [t for t,m in zip(tickers_total,mask) if m]
+    w_incl = w_opt[mask]
+    w_incl /= w_incl.sum()
 
     return tickers_incl, w_incl, ret_opt, vol_opt, sharpe_opt
 
@@ -2135,6 +2112,14 @@ def main():
         # ================================
         st.divider()
         for name, weights, ticks, cov_df, sharpe, ret, vol in cenarios:
+            if "Híbrida" in name:
+                st.write("🏷️", name)
+                st.write("   pesos =", [f"{w:.2%}" for w in weights])
+                st.write("   ret_passado =", ret, "| calculado w@μ_arith =", 
+                        np.dot(weights, (prices_comb[ticks].pct_change().dropna().mean()*252).values))
+                st.write("   vol        =", vol)
+                st.write("   sharpe     =", sharpe)
+
             render_portfolio_section(
                 name=name,
                 weights=weights,
