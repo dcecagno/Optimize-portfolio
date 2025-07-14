@@ -80,43 +80,55 @@ def dynamic_compound_portfolio_metrics(prices, weights, tickers):
     vol = np.sqrt(weights @ cov @ weights)
     return ret, vol
 
-def simulate_portfolios(prices, tickers, n_sim, min_assets, max_assets, min_w, max_w,
-                        seed, alpha_dirichlet, acoes=set(), fiis=set()):
-
+def simulate_portfolios(
+    prices, tickers, n_sim, min_assets, max_assets, min_w, max_w,
+    seed, alpha_dirichlet, acoes=set(), fiis=set()
+):
     np.random.seed(seed)
-
     rets = prices.pct_change().dropna()
-    rets_comp = (1 + rets).prod() ** (252 / len(rets)) - 1
+    rets_comp = (1 + rets).prod() ** (252 / len(rets))
     cov = rets.cov() * 252
 
-    sim_ret, sim_vol, sim_weights, sim_tickers = [], [], [], []
+    sim_ret, sim_vol, sim_w, sim_ticks = [], [], [], []
+    attempts = 0
+    max_attempts = n_sim * 10  # evita loop infinito
 
-    for _ in range(n_sim):
+    while len(sim_ret) < n_sim and attempts < max_attempts:
+        attempts += 1
+
+        # escolhe ativos
         n_assets = np.random.randint(min_assets, max_assets + 1)
         chosen = np.random.choice(tickers, size=n_assets, replace=False)
 
+        # força pelo menos 1 ação e 1 FII, se desejado
         if acoes and fiis:
-            has_acao = any(t in acoes for t in chosen)
-            has_fii = any(t in fiis for t in chosen)
-            if not (has_acao and has_fii):
+            if not (set(chosen) & acoes and set(chosen) & fiis):
                 continue
 
-        weights = np.random.dirichlet([alpha_dirichlet] * n_assets)
-        weights = np.clip(weights, min_w, max_w)
-        weights = weights / weights.sum()
+        # Gera pesos e rejeita se fora dos limites
+        w = np.random.dirichlet([alpha_dirichlet] * n_assets)
+        if (w < min_w).any() or (w > max_w).any():
+            continue
 
+        # OK: aceita
         mu_vec = rets_comp[chosen].values
         cov_mat = cov.loc[chosen, chosen].values
 
-        port_ret = np.dot(weights, mu_vec)
-        port_vol = np.sqrt(np.dot(weights.T, np.dot(cov_mat, weights)))
+        port_ret = np.dot(w, mu_vec)
+        port_vol = np.sqrt(w @ cov_mat @ w)
 
         sim_ret.append(port_ret)
         sim_vol.append(port_vol)
-        sim_weights.append(weights)
-        sim_tickers.append(list(chosen))
+        sim_w.append(w)
+        sim_ticks.append(list(chosen))
 
-    return np.array(sim_ret), np.array(sim_vol), sim_weights, sim_tickers
+    # converte p/ numpy
+    return (
+        np.array(sim_ret),
+        np.array(sim_vol),
+        sim_w,
+        sim_ticks
+    )
 
 def filtrar_por_composicao(ativos_simulados: list[list[str]], acoes: set, fiis: set):
     """
