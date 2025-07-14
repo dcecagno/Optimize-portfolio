@@ -1826,33 +1826,24 @@ def main():
             ticks_fii = []
 
         # Combinado (Ações + FIIs)
-        if sim_vol_comb.size > 0:
-            vol_lin_comb, ret_lin_comb, idx_sharpe_comb, _ = build_efficient_frontier_compound(
-                sim_vol_comb,
-                sim_ret_comb,
-                sim_w_comb,
-                prices_comb,
-                acoes_validos + fii_validos,
-                rf
-            )
-
-            if idx_sharpe_comb is not None:
-                idx = int(idx_sharpe_comb)
-            else:
-                sharpe_vals = (sim_ret_comb - rf) / sim_vol_comb
-                idx         = np.nanargmax(sharpe_vals)
-
-            w_sharpe_comb = sim_w_comb[idx]
-            ticks_comb    = sim_tickers_comb[idx]
-
+        if vol_lin_dyn_comb.size > 0:
+            sharpe_vals_comb   = (ret_lin_dyn_comb - rf) / vol_lin_dyn_comb
+            best_comb          = np.nanargmax(sharpe_vals_comb)
+            idx_sharpe_comb    = hull_idxs_comb[best_comb]
+            w_sharpe_comb      = sim_w_comb[idx_sharpe_comb]
+            ticks_comb         = sim_tickers_comb[idx_sharpe_comb]
+            # Recalcula ret/vol compostos para o ponto ótimo
             ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
                 prices_comb, w_sharpe_comb, ticks_comb
             )
             sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
         else:
-            vol_lin_comb = ret_lin_comb = np.array([])
-            w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+            # fallback para casos degenerados
+            w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
+                pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
+            vol_lin_dyn_comb = ret_lin_dyn_comb = np.array([])
             ticks_comb = []
+
 
         
         tickers_man = normalizar_tickers(tickers_man)
