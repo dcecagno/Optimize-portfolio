@@ -562,8 +562,9 @@ def plot_results(
     ax.grid(True)
 
     # Percent format
-    ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
-    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
+    fmt = mtick.PercentFormatter(xmax=1.0, decimals=0)
+    ax.xaxis.set_major_formatter(fmt)
+    ax.yaxis.set_major_formatter(fmt)
 
     # Axis limits
     all_vols = []
@@ -1471,7 +1472,7 @@ def main():
     ibov_read = ibov_read.loc[time_start:time_end]
     
     # Parâmetros para a simulação de Monte Carlo
-    n_sim = 50_000
+    n_sim = 20_000
     seed = 42
     alpha_dirichlet = 1
     min_assets = st.number_input("Número mínimo de ativos", min_value=1, max_value=20, value=6)
@@ -1940,15 +1941,6 @@ def main():
             st.warning("Nenhum ticker válido foi inserido na carteira manual.")
             ret_man = vol_man = ret_opt_manual = vol_opt_manual = ret_hibrida = vol_hibrida = 0.0
 
-        rets = prices_comb[tickers_hibrida].pct_change().dropna()
-        mu_arith = rets.mean() * 252
-
-        st.write("➜ Tickers Híbrida:", tickers_hibrida)
-        st.write("➜ Pesos Híbrida:", w_hibrida)
-        st.write("➜ Retornos aritméticos (aa):", mu_arith.to_dict())
-        st.write("➜ w @ mu_arith       =", np.dot(w_hibrida, mu_arith.values))
-        st.write("➜ ret_hibrida da função =", ret_hibrida)
-        
         # 12) Estatísticas individuais por ticker
         stats = []
 
@@ -2109,14 +2101,6 @@ def main():
         # ================================
         st.divider()
         for name, weights, ticks, cov_df, sharpe, ret, vol in cenarios:
-            if "Híbrida" in name:
-                st.write("🏷️", name)
-                st.write("   pesos =", [f"{w:.2%}" for w in weights])
-                st.write("   ret_passado =", ret, "| calculado w@μ_arith =", 
-                        np.dot(weights, (prices_comb[ticks].pct_change().dropna().mean()*252).values))
-                st.write("   vol        =", vol)
-                st.write("   sharpe     =", sharpe)
-
             render_portfolio_section(
                 name=name,
                 weights=weights,
