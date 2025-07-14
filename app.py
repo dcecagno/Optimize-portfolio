@@ -9,9 +9,42 @@ import matplotlib.ticker as mtick
 import seaborn as sns
 import streamlit as st
 
+
 # =======================
 # Funções Auxiliares
 # =======================
+
+@st.cache_data(show_spinner=False)
+def get_simulations(
+    prices_comb, tickers_comb,
+    prices_aco,  tickers_aco,
+    prices_fii,  tickers_fii,
+    n_sim, min_assets, max_assets,
+    min_w, max_w, seed, alpha_dirichlet
+):
+    """
+    Retorna 3 tuplas: sim_comb, sim_aco e sim_fii,
+    como saída de simulate_portfolios para cada universo.
+    """
+    sim_comb = simulate_portfolios(
+        prices_comb, tickers_comb,
+        n_sim, min_assets, max_assets,
+        min_w, max_w, seed, alpha_dirichlet,
+        acoes=set(tickers_aco), fiis=set(tickers_fii)
+    )
+    sim_aco = simulate_portfolios(
+        prices_aco, tickers_aco,
+        n_sim, min_assets, max_assets,
+        min_w, max_w, seed, alpha_dirichlet,
+        acoes=set(), fiis=set()
+    )
+    sim_fii = simulate_portfolios(
+        prices_fii, tickers_fii,
+        n_sim, min_assets, max_assets,
+        min_w, max_w, seed, alpha_dirichlet,
+        acoes=set(), fiis=set()
+    )
+    return sim_comb, sim_aco, sim_fii
 
 def _read_close_prices(path_csv: str) -> pd.DataFrame:
     """
@@ -1649,18 +1682,19 @@ def main():
         # Volatilidade anualizada
         vol_anual_ibov = rets_ibov.std() * np.sqrt(252)
 
-        # 1) garante e carrega as 3 simulações
-        (
-            sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb,
-            sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tickers_aco,
-            sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tickers_fii
-        ) = ensure_simulations(
+        # 1) Simulações em cache (reexecuta se qualquer parâmetro mudar)
+        (sim_comb, sim_aco, sim_fii) = get_simulations(
             prices_comb, acoes_validos + fii_validos,
             prices_aco,  acoes_validos,
             prices_fii,  fii_validos,
             n_sim, min_assets, max_assets,
             min_w, max_w, seed, alpha_dirichlet
         )
+
+        # desempacota cada universo
+        sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb = sim_comb
+        sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tickers_aco   = sim_aco
+        sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tickers_fii   = sim_fii
 
         # 2) computa nuvens compostas
         sim_ret_dyn_aco, sim_vol_dyn_aco   = compute_dynamic_cloud(sim_ret_aco, sim_vol_aco, sim_w_aco, sim_tickers_aco, prices_aco)
