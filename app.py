@@ -316,7 +316,7 @@ def otimizar_carteira_hibrida(
     w_incl       /= w_incl.sum()
 
     return tickers_incl, w_incl, ret_opt, vol_opt, sharpe_opt
-
+    
 def pick_best_sim(
         sim_ret, 
         sim_vol, 
@@ -1914,16 +1914,22 @@ def main():
                 cov_manual = cov_comb.loc[tickers_man, tickers_man]
                 cov_opt_manual = cov_comb.loc[tickers_man, tickers_man]
 
-                # 3) Carteira Híbrida – via SLSQP, mantendo pesos mínimos manuais e teto extra
-                tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = \
-                    otimizar_carteira_hibrida(
-                        tickers_man,          # lista de manuais
-                        valores_man,          # valores correspondentes
-                        prices_comb,          # DataFrame de preços ajustados do universo combinado
-                        percentual_adicional, # float em [0,1]
-                        rf                    # taxa livre de risco
+                # 3) Carteira Híbrida – otimiza só os pesos
+                tickers_hibrida, w_hibrida, _, _, _ = otimizar_carteira_hibrida(
+                    tickers_man,          # lista de manuais
+                    valores_man,          # valores correspondentes
+                    prices_comb,          # DataFrame de preços ajustados do universo combinado
+                    percentual_adicional, # float em [0,1]
+                    rf                    # taxa livre de risco
+                )
+                if tickers_hibrida:
+                    ret_hibrida, vol_hibrida = dynamic_compound_portfolio_metrics(
+                        prices_comb, w_hibrida, tickers_hibrida
                     )
-                cov_hibrida = cov_comb.loc[tickers_hibrida, tickers_hibrida]
+                    sharpe_hibrida = (ret_hibrida - rf) / vol_hibrida
+                else:
+                    # fallback caso não haja carteira híbrida
+                    ret_hibrida = vol_hibrida = sharpe_hibrida = np.nan
 
             except Exception as e:
                 st.error(f"Erro ao processar carteira manual: {e}")
