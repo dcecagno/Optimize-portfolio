@@ -643,9 +643,14 @@ def plot_correlation_heatmap(
 
     # 1) Series de pesos
     serie_w = pd.Series(weights, index=tickers)
+    st.write(">>> cov_df.columns:", cov_df.columns.tolist())
+    st.write(">>> tickers recebidos:", tickers)
+    st.write(">>> pesos:", weights)
+
 
     # 2) Filtra ativos relevantes
     serie_sel = serie_w[serie_w > min_weight]
+    st.write(">>> tickers após filtro (> min_weight):", serie_sel.index.tolist())
     tickers_sel = serie_sel.index.tolist()
     if not tickers_sel:
         st.warning(f"Nenhum ativo acima do limiar de {min_weight:.1%} em {title}.")
