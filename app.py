@@ -2006,73 +2006,115 @@ def main():
 
 
         
-        # 1) MONTA CENÁRIOS COM OS TICKERS EXATOS DE CADA SHARPE MÁXIMO
+        # ================================
+        # 1) Montagem de todos os cenários
+        # ================================
         cenarios = []
 
-        # AÇÕES
+        # Sharpe Máx – Ações
         if not np.isnan(vol_sh_aco):
-            ticks_aco = ativos_aco[idx_sharpe_aco]                # lista de tickers daquela simulação
-            cov_sub_aco = cov_aco.loc[ticks_aco, ticks_aco]       # sub-cov só desses tickers
+            ticks_aco = sim_tickers_aco[idx_sharpe_aco]
+            cov_sub   = cov_aco.loc[ticks_aco, ticks_aco]
             cenarios.append((
                 "Sharpe Máx – Ações",
                 w_sharpe_aco,
                 ticks_aco,
-                cov_sub_aco,
+                cov_sub,
                 sharpe_liquida_aco,
                 ret_sh_aco,
                 vol_sh_aco
             ))
 
-        # FIIs
+        # Sharpe Máx – FIIs
         if not np.isnan(vol_sh_fii):
-            ticks_fii = ativos_fii[idx_sharpe_fii]
-            cov_sub_fii = cov_fii.loc[ticks_fii, ticks_fii]
+            ticks_fii = sim_tickers_fii[idx_sharpe_fii]
+            cov_sub   = cov_fii.loc[ticks_fii, ticks_fii]
             cenarios.append((
                 "Sharpe Máx – FIIs",
                 w_sharpe_fii,
                 ticks_fii,
-                cov_sub_fii,
+                cov_sub,
                 sharpe_liquida_fii,
                 ret_sh_fii,
                 vol_sh_fii
             ))
 
-        # COMBINADO (Ações + FIIs)
+        # Sharpe Máx – Ações + FIIs
         if not np.isnan(vol_sh_comb):
-            ticks_comb_sim = st.session_state.ativos_comb[idx_sharpe_comb]
-            cov_sub_comb = cov_comb.loc[ticks_comb_sim, ticks_comb_sim]
+            ticks_comb = sim_tickers_comb[idx_sharpe_comb]
+            cov_sub    = cov_comb.loc[ticks_comb, ticks_comb]
             cenarios.append((
                 "Sharpe Máx – Ações + FIIs",
                 w_sharpe_comb,
-                ticks_comb_sim,
-                cov_sub_comb,
+                ticks_comb,
+                cov_sub,
                 sharpe_liquida_comb,
                 ret_sh_comb,
                 vol_sh_comb
             ))
 
-        # (Opcional) Carteiras Manuais — mantém o seu bloco, pois aí w e tickers_man já batem
+        # Carteira Manual (original)
+        if tickers_man:
+            cov_sub = cov_comb.loc[tickers_man, tickers_man]
+            cenarios.append((
+                "Carteira Manual",
+                w_man,
+                tickers_man,
+                cov_sub,
+                sharpe_man,
+                ret_man,
+                vol_man
+            ))
 
-        # 2) RENDERIZAÇÃO
+        # Carteira Manual Otimizada
+        if tickers_man and isinstance(w_opt_manual, np.ndarray):
+            cov_sub = cov_comb.loc[tickers_man, tickers_man]
+            cenarios.append((
+                "Carteira Manual Otimizada",
+                w_opt_manual,
+                tickers_man,
+                cov_sub,
+                sharpe_opt_manual,
+                ret_opt_manual,
+                vol_opt_manual
+            ))
+
+        # Carteira Híbrida
+        if tickers_hibrida and isinstance(w_hibrida, np.ndarray):
+            cov_sub = cov_comb.loc[tickers_hibrida, tickers_hibrida]
+            nome = f"Carteira Híbrida (+{int(percentual_adicional*100)}% novos)"
+            cenarios.append((
+                nome,
+                w_hibrida,
+                tickers_hibrida,
+                cov_sub,
+                sharpe_hibrida,
+                ret_hibrida,
+                vol_hibrida
+            ))
+
+        # ================================
+        # 2) Renderização sequencial
+        # ================================
         st.divider()
-        for nome, w, ticks, cov_df, s, r, v in cenarios:
-            # tabela de participação + heatmap
+        for name, weights, ticks, cov_df, sharpe, ret, vol in cenarios:
             render_portfolio_section(
-                name=nome,
-                weights=w,
+                name=name,
+                weights=weights,
                 tickers=ticks,
                 cov_df=cov_df,
-                sharpe=s,
-                ret=r,
-                vol=v
+                sharpe=sharpe,
+                ret=ret,
+                vol=vol,
+                min_weight=0.001
             )
 
-            # se for o combinado, exibe % Ações vs % FIIs
-            if nome == "Sharpe Máx – Ações + FIIs":
-                pct_acoes = sum(w[i] for i,t in enumerate(ticks) if t in acoes_validos)
-                pct_fii   = sum(w[i] for i,t in enumerate(ticks) if t in fii_validos)
+            # se for o combinado, exibe a composição por classes
+            if name == "Sharpe Máx – Ações + FIIs":
+                pct_aco = sum(weights[i] for i,t in enumerate(ticks) if t in acoes_validos)
+                pct_fii = sum(weights[i] for i,t in enumerate(ticks) if t in fii_validos)
                 st.markdown("**Composição por classe:**")
-                st.markdown(f"- Ações: {pct_acoes:.2%} | FIIs: {pct_fii:.2%}")
+                st.markdown(f"- Ações: {pct_aco:.2%} | FIIs: {pct_fii:.2%}")
 
             st.divider()
 
