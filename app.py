@@ -379,6 +379,10 @@ def convex_frontier_with_indices(vols: np.ndarray, rets: np.ndarray):
     vol_f, ret_f = map(np.array, zip(*envelope))
     return vol_f, ret_f, idxs
 
+# =======================
+# Funções de Execução
+# =======================
+
 def ensure_simulations(
     prices_comb, tickers_comb,
     prices_aco,  tickers_aco,
@@ -420,6 +424,81 @@ def ensure_simulations(
         sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tk_aco,
         sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tk_fii
     )
+
+def compute_dynamic_cloud(
+    sim_ret: np.ndarray,
+    sim_vol: np.ndarray,
+    sim_w: list[np.ndarray],
+    sim_tickers: list[list[str]],
+    prices: pd.DataFrame
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Dada a simulação bruta (sim_ret, sim_vol, sim_w, sim_tickers)
+    e o DataFrame de preços, retorna duas arrays:
+      - sim_ret_dyn: retornos compostos via log-returns
+      - sim_vol_dyn: volatilidades compostas
+    """
+    n = sim_ret.shape[0]
+    sim_ret_dyn = np.empty(n, dtype=float)
+    sim_vol_dyn = np.empty(n, dtype=float)
+
+    for i, (w, ticks) in enumerate(zip(sim_w, sim_tickers)):
+        r, v = dynamic_compound_portfolio_metrics(prices, w, ticks)
+        sim_ret_dyn[i] = r
+        sim_vol_dyn[i] = v
+
+    return sim_ret_dyn, sim_vol_dyn
+
+def compute_frontier_and_sharpe(
+    sim_ret_dyn: np.ndarray,
+    sim_vol_dyn: np.ndarray,
+    sim_w: list[np.ndarray],
+    sim_tickers: list[list[str]],
+    prices: pd.DataFrame,
+    rf: float
+) -> dict:
+    """
+    Dada a nuvem dinâmica e os pesos/tickers originais, constrói:
+      - frontier_vol, frontier_ret: envelope convexo da nuvem
+      - hull_idxs: índices dos vértices no array dinâmico
+      - w_sh, ticks_sh, ret_sh, vol_sh, sharpe_sh: ponto de Sharpe Máx
+    Retorna um dict com todas essas informações.
+    """
+    # 1) envelope convexo
+    vol_front, ret_front, hull_idxs = convex_frontier_with_indices(
+        sim_vol_dyn, sim_ret_dyn
+    )
+
+    # 2) extrai ponto de Sharpe na fronteira
+    if vol_front.size > 0:
+        sharpe_vals = (ret_front - rf) / vol_front
+        best        = np.nanargmax(sharpe_vals)
+        idxf        = hull_idxs[best]
+
+        w_sh    = sim_w[idxf]
+        ticks_sh= sim_tickers[idxf]
+        # garante métricas compostas exatas no ponto ótimo
+        ret_sh, vol_sh = dynamic_compound_portfolio_metrics(
+            prices, w_sh, ticks_sh
+        )
+        sharpe_sh = (ret_sh - rf) / vol_sh
+    else:
+        # fallback
+        w_sh, ret_sh, vol_sh, sharpe_sh = pick_best_sim(
+            sim_ret_dyn, sim_vol_dyn, sim_w, rf
+        )
+        ticks_sh = []
+
+    return {
+        "front_vol":   vol_front,
+        "front_ret":   ret_front,
+        "hull_idxs":   hull_idxs,
+        "w_sh":        w_sh,
+        "ticks_sh":    ticks_sh,
+        "ret_sh":      ret_sh,
+        "vol_sh":      vol_sh,
+        "sharpe_sh":   sharpe_sh
+    }
 
 # =======================
 # Funções de Plotagem
@@ -1581,124 +1660,16 @@ def main():
             min_w, max_w, seed, alpha_dirichlet
         )
 
-        # ================================
-        # 2) Cálculo de return & vol compostos
-        #    (dynamic_compound_portfolio_metrics)
-        # ================================
-        # Ações
-        sim_ret_dyn_aco = np.empty_like(sim_ret_aco)
-        sim_vol_dyn_aco = np.empty_like(sim_vol_aco)
-        for i, (w, ticks) in enumerate(zip(sim_w_aco, sim_tickers_aco)):
-            r_dyn, v_dyn = dynamic_compound_portfolio_metrics(prices_aco, w, ticks)
-            sim_ret_dyn_aco[i] = r_dyn
-            sim_vol_dyn_aco[i] = v_dyn
+        # 2) computa nuvens compostas
+        sim_ret_dyn_aco, sim_vol_dyn_aco   = compute_dynamic_cloud(sim_ret_aco, sim_vol_aco, sim_w_aco, sim_tickers_aco, prices_aco)
+        sim_ret_dyn_fii, sim_vol_dyn_fii   = compute_dynamic_cloud(sim_ret_fii, sim_vol_fii, sim_w_fii, sim_tickers_fii, prices_fii)
+        sim_ret_dyn_comb, sim_vol_dyn_comb = compute_dynamic_cloud(sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb, prices_comb)
 
-        # FIIs
-        sim_ret_dyn_fii = np.empty_like(sim_ret_fii)
-        sim_vol_dyn_fii = np.empty_like(sim_vol_fii)
-        for i, (w, ticks) in enumerate(zip(sim_w_fii, sim_tickers_fii)):
-            r, v = dynamic_compound_portfolio_metrics(prices_fii, w, ticks)
-            sim_ret_dyn_fii[i] = r
-            sim_vol_dyn_fii[i] = v
+        # 3) constrói fronteira + ponto de Sharpe
+        aco_res  = compute_frontier_and_sharpe(sim_ret_dyn_aco, sim_vol_dyn_aco, sim_w_aco, sim_tickers_aco, prices_aco, rf)
+        fii_res  = compute_frontier_and_sharpe(sim_ret_dyn_fii, sim_vol_dyn_fii, sim_w_fii, sim_tickers_fii, prices_fii, rf)
+        comb_res = compute_frontier_and_sharpe(sim_ret_dyn_comb, sim_vol_dyn_comb, sim_w_comb, sim_tickers_comb, prices_comb, rf)
 
-        # Combinado (Ações + FIIs)
-        sim_ret_dyn_comb = np.empty_like(sim_ret_comb)
-        sim_vol_dyn_comb = np.empty_like(sim_vol_comb)
-        for i, (w, ticks) in enumerate(zip(sim_w_comb, sim_tickers_comb)):
-            r, v = dynamic_compound_portfolio_metrics(prices_comb, w, ticks)
-            sim_ret_dyn_comb[i] = r
-            sim_vol_dyn_comb[i] = v
-
-        # 3) Constrói a fronteira convexa em cima da nuvem composta
-        vol_lin_dyn_aco, ret_lin_dyn_aco, hull_idxs_aco = convex_frontier_with_indices(
-            sim_vol_dyn_aco, sim_ret_dyn_aco
-        )
-        vol_lin_dyn_fii, ret_lin_dyn_fii, hull_idxs_fii = convex_frontier_with_indices(
-            sim_vol_dyn_fii, sim_ret_dyn_fii
-        )
-        vol_lin_dyn_comb, ret_lin_dyn_comb, hull_idxs_comb = convex_frontier_with_indices(
-            sim_vol_dyn_comb, sim_ret_dyn_comb
-        )
-
-        # Filtra por composição (só misto)
-        idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
-            sim_tickers_comb,
-            set(acoes_validos),
-            set(fii_validos)
-        )
-
-        # apaga mistos inválidos
-        if idx_misto:
-            sim_ret_comb     = sim_ret_comb[idx_misto]
-            sim_vol_comb     = sim_vol_comb[idx_misto]
-            sim_w_comb       = [sim_w_comb[i] for i in idx_misto]
-            sim_tickers_comb = [sim_tickers_comb[i] for i in idx_misto]
-        else:
-            sim_ret_comb = np.array([])
-            sim_vol_comb = np.array([])
-            sim_w_comb   = []
-            sim_tickers_comb = []
-
-        # Ações
-        if vol_lin_dyn_aco.size > 0:
-            sharpe_vals_aco = (ret_lin_dyn_aco - rf) / vol_lin_dyn_aco
-            best_aco        = np.nanargmax(sharpe_vals_aco)
-            idx_sharpe_aco  = hull_idxs_aco[best_aco]
-            w_sharpe_aco    = sim_w_aco[idx_sharpe_aco]
-            ticks_aco       = sim_tickers_aco[idx_sharpe_aco]
-            # Recalcula ret/vol compostos para o ponto ótimo
-            ret_sh_aco, vol_sh_aco = dynamic_compound_portfolio_metrics(
-                prices_aco, w_sharpe_aco, ticks_aco
-            )
-            sharpe_liquida_aco = (ret_sh_aco - rf) / vol_sh_aco
-        else:
-            # fallback cuida dos casos degenerados
-            w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = \
-                pick_best_sim(sim_ret_aco, sim_vol_aco, sim_w_aco, rf)
-            vol_lin_dyn_aco = ret_lin_dyn_aco = np.array([])
-            ticks_aco = []
-
-
-        # FIIs
-        if vol_lin_dyn_fii.size > 0:
-            sharpe_vals_fii   = (ret_lin_dyn_fii - rf) / vol_lin_dyn_fii
-            best_fii          = np.nanargmax(sharpe_vals_fii)
-            idx_sharpe_fii    = hull_idxs_fii[best_fii]
-            w_sharpe_fii      = sim_w_fii[idx_sharpe_fii]
-            ticks_fii         = sim_tickers_fii[idx_sharpe_fii]
-            # Recalcula ret/vol compostos para o ponto ótimo
-            ret_sh_fii, vol_sh_fii = dynamic_compound_portfolio_metrics(
-                prices_fii, w_sharpe_fii, ticks_fii
-            )
-            sharpe_liquida_fii = (ret_sh_fii - rf) / vol_sh_fii
-        else:
-            # fallback para casos degenerados
-            w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = \
-                pick_best_sim(sim_ret_fii, sim_vol_fii, sim_w_fii, rf)
-            vol_lin_dyn_fii = ret_lin_dyn_fii = np.array([])
-            ticks_fii = []
-
-        # Combinado (Ações + FIIs)
-        if vol_lin_dyn_comb.size > 0:
-            sharpe_vals_comb   = (ret_lin_dyn_comb - rf) / vol_lin_dyn_comb
-            best_comb          = np.nanargmax(sharpe_vals_comb)
-            idx_sharpe_comb    = hull_idxs_comb[best_comb]
-            w_sharpe_comb      = sim_w_comb[idx_sharpe_comb]
-            ticks_comb         = sim_tickers_comb[idx_sharpe_comb]
-            # Recalcula ret/vol compostos para o ponto ótimo
-            ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
-                prices_comb, w_sharpe_comb, ticks_comb
-            )
-            sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
-        else:
-            # fallback para casos degenerados
-            w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
-                pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
-            vol_lin_dyn_comb = ret_lin_dyn_comb = np.array([])
-            ticks_comb = []
-
-
-        
         tickers_man = normalizar_tickers(tickers_man)
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
@@ -1924,21 +1895,35 @@ def main():
 
         # Plotagem
         plot_results(
+            # Ações (dinâmico)
             sim_vol_dyn_aco, sim_ret_dyn_aco,
-            vol_lin_dyn_aco, ret_lin_dyn_aco,
-            vol_sh_aco, ret_sh_aco,
+            aco_res["front_vol"],   aco_res["front_ret"],
+            aco_res["vol_sh"],      aco_res["ret_sh"],
+
+            # FIIs (dinâmico)
             sim_vol_dyn_fii, sim_ret_dyn_fii,
-            vol_lin_dyn_fii, ret_lin_dyn_fii,
-            vol_sh_fii, ret_sh_fii,
+            fii_res["front_vol"],   fii_res["front_ret"],
+            fii_res["vol_sh"],      fii_res["ret_sh"],
+
+            # Combinado (dinâmico)
             sim_vol_dyn_comb, sim_ret_dyn_comb,
-            vol_lin_dyn_comb, ret_lin_dyn_comb,
-            vol_sh_comb, ret_sh_comb,
+            comb_res["front_vol"],  comb_res["front_ret"],
+            comb_res["vol_sh"],     comb_res["ret_sh"],
+
+            # Carteira Manual e Otimizada
             vol_man, ret_man,
             vol_opt_manual, ret_opt_manual,
+
+            # Carteira Híbrida
             vol_hibrida, ret_hibrida,
+
+            # Manual tickers (para mostrar os pontos laranja)
             tickers_man,
+
+            # Ibovespa
             ret_anual_ibov, vol_anual_ibov
         )
+
 
 
         # ================================
