@@ -1790,29 +1790,26 @@ def main():
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
         # FRONTEIRA + SHARPE MÁXIMO – COMBINADO
-        # Sharpe Máx – Ações + FIIs
         if sim_vol_comb.size > 0:
-            vol_lin_comb, ret_lin_comb, hull_idxs = convex_frontier_with_indices(
-                sim_vol_comb, sim_ret_comb
+            # 1) Constrói fronteira eficiente composta (sem extrapolar)
+            vol_lin_comb, ret_lin_comb, idx_sharpe_comb, _ = build_efficient_frontier_compound(
+                sim_vol_comb,
+                sim_ret_comb,
+                sim_w_comb,
+                prices_comb,
+                acoes_validos + fii_validos,
+                rf
             )
-            if vol_lin_comb.size > 0:
-                sharpe_vals         = (ret_lin_comb - rf) / vol_lin_comb
-                best                = np.nanargmax(sharpe_vals)
-                idx_sharpe_comb     = hull_idxs[best]
-                w_sharpe_comb       = sim_w_comb[idx_sharpe_comb]
-                ticks_comb          = sim_tickers_comb[idx_sharpe_comb]
 
-                # recalcula retorno/volatilidade compostos com log-returns
-                ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
-                    prices_comb, w_sharpe_comb, ticks_comb
-                )
-                sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
+            # 2) Extrai pesos e tickers do ponto de Sharpe Máx
+            w_sharpe_comb = sim_w_comb[idx_sharpe_comb]
+            ticks_comb    = sim_tickers_comb[idx_sharpe_comb]
 
-            else:
-                # fallback total (usando simulações dinâmicas)
-                w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
-                    pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
-                vol_lin_comb, ret_lin_comb = np.array([]), np.array([])
+            # 3) Recalcula retorno e volatilidade compostos
+            ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
+                prices_comb, w_sharpe_comb, ticks_comb
+            )
+            sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
 
         else:
             vol_lin_comb = ret_lin_comb = np.array([])
