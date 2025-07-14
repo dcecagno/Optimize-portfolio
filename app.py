@@ -484,6 +484,7 @@ def compute_frontier_and_sharpe(
         sharpe_sh = (ret_sh - rf) / vol_sh
     else:
         # fallback
+        idxf = None
         w_sh, ret_sh, vol_sh, sharpe_sh = pick_best_sim(
             sim_ret_dyn, sim_vol_dyn, sim_w, rf
         )
@@ -493,6 +494,7 @@ def compute_frontier_and_sharpe(
         "front_vol":   vol_front,
         "front_ret":   ret_front,
         "hull_idxs":   hull_idxs,
+        "idx_sh":      idxf,
         "w_sh":        w_sh,
         "ticks_sh":    ticks_sh,
         "ret_sh":      ret_sh,
@@ -1670,6 +1672,31 @@ def main():
         fii_res  = compute_frontier_and_sharpe(sim_ret_dyn_fii, sim_vol_dyn_fii, sim_w_fii, sim_tickers_fii, prices_fii, rf)
         comb_res = compute_frontier_and_sharpe(sim_ret_dyn_comb, sim_vol_dyn_comb, sim_w_comb, sim_tickers_comb, prices_comb, rf)
 
+        # ——— Ações ———
+        w_sharpe_aco      = aco_res["w_sh"]
+        ret_sh_aco        = aco_res["ret_sh"]
+        vol_sh_aco        = aco_res["vol_sh"]
+        sharpe_liquida_aco= aco_res["sharpe_sh"]
+        idx_sharpe_aco    = aco_res["idx_sh"]
+
+
+
+        # ——— FIIs ———
+        w_sharpe_fii      = fii_res["w_sh"]
+        ret_sh_fii        = fii_res["ret_sh"]
+        vol_sh_fii        = fii_res["vol_sh"]
+        sharpe_liquida_fii= fii_res["sharpe_sh"]
+        idx_sharpe_fii    = fii_res["idx_sh"]
+
+
+        # ——— Combinado ———
+        w_sharpe_comb      = comb_res["w_sh"]
+        ticks_comb         = comb_res["ticks_sh"]
+        ret_sh_comb        = comb_res["ret_sh"]
+        vol_sh_comb        = comb_res["vol_sh"]
+        sharpe_liquida_comb= comb_res["sharpe_sh"]
+        idx_sharpe_comb= comb_res["idx_sh"]
+
         tickers_man = normalizar_tickers(tickers_man)
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
@@ -1812,9 +1839,6 @@ def main():
                 )
                 sharpe_opt_manual = (ret_opt_manual - rf) / vol_opt_manual
 
-                cov_manual = cov_comb.loc[tickers_man, tickers_man]
-                cov_opt_manual = cov_comb.loc[tickers_man, tickers_man]
-
                 # 3) Carteira Híbrida – otimiza só os pesos
                 tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = otimizar_carteira_hibrida(
                     tickers_man,          # lista de manuais
@@ -1923,8 +1947,6 @@ def main():
             # Ibovespa
             ret_anual_ibov, vol_anual_ibov
         )
-
-
 
         # ================================
         # 1) Montagem de todos os cenários
