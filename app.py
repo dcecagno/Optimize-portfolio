@@ -570,14 +570,11 @@ def plot_results(
 
     # Efficient frontier lines (compostos)
     if vol_lin_dyn_comb.size > 0:
-        ax.plot(vol_lin_dyn_comb, ret_lin_dyn_comb,
-                '-', c='red', lw=2, label='Fronteira – Ações+FIIs')
+        ax.plot(vol_lin_dyn_comb, ret_lin_dyn_comb, '-', c='red', lw=2)
     if vol_lin_dyn_aco.size > 0:
-        ax.plot(vol_lin_dyn_aco, ret_lin_dyn_aco,
-                '-', c='blue', lw=2, label='Fronteira – Ações')
+        ax.plot(vol_lin_dyn_aco, ret_lin_dyn_aco, '-', c='blue', lw=2)
     if vol_lin_dyn_fii.size > 0:
-        ax.plot(vol_lin_dyn_fii, ret_lin_dyn_fii,
-                '-', c='green', lw=2, label='Fronteira – FIIs')
+        ax.plot(vol_lin_dyn_fii, ret_lin_dyn_fii, '-', c='green', lw=2)
 
     # Sharpe max stars (compostos)
     if not np.isnan(vol_sh_comb):
@@ -2044,10 +2041,6 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_comb, w_sharpe_comb, ticks
             )
-            st.write("🏷️ Sharpe Máx – Ações + FIIs")
-            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
-            st.write(f"   ret_passado = {ret_sh_comb:.2%} | vol_passado = {vol_sh_comb:.2%}")
-            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_comb.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – Ações + FIIs",
