@@ -254,67 +254,78 @@ def rebalance_weights(weights, min_w=0.03):
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
 
-def otimizar_carteira_hibrida(tickers_man, valores_man, ativos_sugeridos,
-                               mu_series, cov_df, percentual_adicional, rf):
-    from scipy.optimize import minimize
-
+def otimizar_carteira_hibrida(
+    tickers_man: list[str],
+    valores_man: list[float],
+    ativos_sugeridos: list[str],
+    prices: pd.DataFrame,
+    percentual_adicional: float,
+    rf: float
+):
+    # pesos originais
     total_man = sum(valores_man)
-    w_man = np.array([v / total_man for v in valores_man])
+    w_man = np.array([v/total_man for v in valores_man])
 
+    # lista total de tickers
     tickers_total = tickers_man.copy()
     if ativos_sugeridos:
         tickers_total += ativos_sugeridos
     else:
-        tickers_total += [t for t in mu_series.index if t not in tickers_man]
-
+        tickers_total += [t for t in prices.columns if t not in tickers_man]
     tickers_total = list(dict.fromkeys(tickers_total))
-
-    mu_vec = mu_series[tickers_total].values
-    cov_mat = cov_df.loc[tickers_total, tickers_total].values
 
     n = len(tickers_total)
     idx_man = [tickers_total.index(t) for t in tickers_man]
 
-    peso_min = 0.0
-    peso_max = 1.0
+    # log-returns anualizados
+    rets     = prices[tickers_total].pct_change().dropna()
+    log_rets = np.log1p(rets)
+    mu_log   = log_rets.mean() * 252
+    cov_log  = log_rets.cov() * 252
+    μ = mu_log.values
+    Σ = cov_log.values
 
+    # quanto da carteira final é "capital antigo"
+    soma_manual = 1.0 / (1.0 + percentual_adicional)
+
+    # negativa de Sharpe via log-returns
     def neg_sharpe(w):
-        port_ret = np.dot(w, mu_vec)
-        port_vol = np.sqrt(np.dot(w.T, np.dot(cov_mat, w)))
+        port_log = w @ μ
+        port_ret = np.expm1(port_log)
+        port_vol = np.sqrt(w @ Σ @ w)
         return -(port_ret - rf) / port_vol
 
-    bounds = [(peso_min, peso_max)] * n
-
-    def constraint_sum(w):
-        return np.sum(w) - 1.0
-
-    def constraint_preserva_pesos(w):
-        soma_manual = (1 - percentual_adicional)
-        return w[idx_man].sum() - soma_manual
-
-    x0 = np.array([0.0] * n)
-    for i in idx_man:
-        x0[i] = (1 - percentual_adicional) * w_man[idx_man.index(i)]
-    resto = 1 - np.sum(x0)
-    if resto > 0:
-        for i in range(n):
-            if i not in idx_man:
-                x0[i] = resto / (n - len(idx_man))
-
-    constraints = [
-        {"type": "eq", "fun": constraint_sum},
-        {"type": "eq", "fun": constraint_preserva_pesos}
+    # constraints
+    bounds = [(0, 1)]*n
+    cons = [
+        {"type": "eq", "fun": lambda w: w.sum() - 1.0},
+        {"type": "eq",
+         "fun": lambda w: w[idx_man].sum() - soma_manual}
     ]
 
-    result = minimize(neg_sharpe, x0, method="SLSQP", bounds=bounds, constraints=constraints)
-    if result.success:
-        w_opt = result.x
-        ret = np.dot(w_opt, mu_vec)
-        vol = np.sqrt(w_opt.T @ cov_mat @ w_opt)
-        sharpe = (ret - rf) / vol
-        return tickers_total, w_opt, ret, vol, sharpe
-    else:
-        raise RuntimeError("Otimização híbrida falhou: " + result.message)
+    # chute inicial
+    x0 = np.zeros(n)
+    for j, im in enumerate(idx_man):
+        x0[im] = soma_manual * w_man[j]
+    resto = 1 - x0.sum()
+    if resto > 0:
+        livres = [i for i in range(n) if i not in idx_man]
+        for i in livres:
+            x0[i] = resto / len(livres)
+
+    # otimização
+    res = minimize(neg_sharpe, x0, method="SLSQP",
+                   bounds=bounds, constraints=cons)
+    if not res.success:
+        raise RuntimeError("Híbrida falhou: " + res.message)
+
+    w_opt = res.x
+    port_log = w_opt @ μ
+    ret_opt  = np.expm1(port_log)
+    vol_opt  = np.sqrt(w_opt @ Σ @ w_opt)
+    sharpe_opt = (ret_opt - rf) / vol_opt
+
+    return tickers_total, w_opt, ret_opt, vol_opt, sharpe_opt
 
 def pick_best_sim(
         sim_ret, 
