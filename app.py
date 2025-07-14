@@ -265,12 +265,11 @@ def otimizar_carteira_hibrida(
     eps: float = 1e-6
 ) -> tuple[list[str], np.ndarray, float, float, float]:
     """
-    Otimiza uma carteira híbrida preservando:
-      - A soma dos pesos = 1
-      - Cada peso manual = frac_man * w_man_original
-      - Nenhum peso fora de [min_w, max_w]
-      - Injeta percentual_adicional de capital novo
-    Calcula retorno e volatilidade via log-returns + expm1.
+    Otimiza a carteira híbrida:
+      - soma dos pesos = 1
+      - cada manual “fixo” em frac_man * w_man_original (por bound)
+      - ativos novos em [min_w, max_w]
+      - calcula retorno/vol via log-returns + expm1
     Retorna: (tickers_incl, w_incl, ret, vol, sharpe)
     """
 
@@ -284,43 +283,40 @@ def otimizar_carteira_hibrida(
     n = len(tickers_total)
     idx_man = [tickers_total.index(t) for t in tickers_man]
 
-    # 3) Log-returns anualizados
+    # 3) Log-returns anuais
     rets     = prices[tickers_total].pct_change().dropna()
     log_rets = np.log1p(rets)
     mu_log   = log_rets.mean() * 252
     cov_log  = log_rets.cov()  * 252
     μ, Σ     = mu_log.values, cov_log.values
 
-    # 4) Fração do capital antigo na carteira final
+    # 4) Fração do capital antigo
     frac_man = 1.0 / (1.0 + percentual_adicional)
 
-    # 5) Função negativa de Sharpe usando log-returns
+    # 5) Função negativa de Sharpe
     def neg_sharpe(w):
         port_log = w @ μ
         port_ret = np.expm1(port_log)
         port_vol = np.sqrt(w @ Σ @ w)
         return -(port_ret - rf) / port_vol
 
-    # 6) Bounds de peso para todos os ativos
-    bounds = [(min_w, max_w)] * n
-
-    # 7) Constraints
-    cons = [
-        {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
-    ]
-    # fixa cada peso manual individualmente
+    # 6) Monta os bounds
+    bounds = [(None, None)] * n
     for j, im in enumerate(idx_man):
         target = frac_man * w_man[j]
-        cons.append({
-            "type": "eq",
-            "fun":  (lambda w, im=im, tgt=target: w[im] - tgt)
-        })
+        bounds[im] = (target, target)
+    for i in range(n):
+        if i not in idx_man:
+            bounds[i] = (min_w, max_w)
 
-    # 8) Palpite inicial
+    # 7) Apenas 1 constraint: soma dos pesos = 1
+    cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+
+    # 8) Chute inicial
     x0 = np.zeros(n)
     for j, im in enumerate(idx_man):
         x0[im] = frac_man * w_man[j]
-    resto = 1.0 - x0.sum()
+    resto = 1 - x0.sum()
     if resto > 0:
         livres = [i for i in range(n) if i not in idx_man]
         for i in livres:
@@ -337,7 +333,7 @@ def otimizar_carteira_hibrida(
     if not result.success:
         raise RuntimeError("Otimização híbrida falhou: " + result.message)
 
-    # 10) Extrai resultados
+    # 10) Extração das métricas
     w_opt    = result.x
     port_log = w_opt @ μ
     ret_opt  = float(np.expm1(port_log))
@@ -351,7 +347,7 @@ def otimizar_carteira_hibrida(
     w_incl      /= w_incl.sum()
 
     return tickers_incl, w_incl, ret_opt, vol_opt, sharpe_opt
-   
+  
 def pick_best_sim(
         sim_ret, 
         sim_vol, 
