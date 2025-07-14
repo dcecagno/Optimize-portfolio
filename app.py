@@ -1757,10 +1757,10 @@ def main():
         vol_lin_dyn_aco, ret_lin_dyn_aco, hull_idxs_aco = convex_frontier_with_indices(
             sim_vol_dyn_aco, sim_ret_dyn_aco
         )
-        vol_lin_dyn_fii, ret_lin_dyn_fii, _ = convex_frontier_with_indices(
+        vol_lin_dyn_fii, ret_lin_dyn_fii, hull_idxs_fii = convex_frontier_with_indices(
             sim_vol_dyn_fii, sim_ret_dyn_fii
         )
-        vol_lin_dyn_comb, ret_lin_dyn_comb, _ = convex_frontier_with_indices(
+        vol_lin_dyn_comb, ret_lin_dyn_comb, hull_idxs_comb = convex_frontier_with_indices(
             sim_vol_dyn_comb, sim_ret_dyn_comb
         )
 
@@ -1807,24 +1807,23 @@ def main():
 
 
         # FIIs
-        if sim_vol_fii.size > 0:
-            vol_lin_fii, ret_lin_fii, idxs = convex_frontier_with_indices(
-                sim_vol_fii, sim_ret_fii
+        if vol_lin_dyn_fii.size > 0:
+            sharpe_vals_fii   = (ret_lin_dyn_fii - rf) / vol_lin_dyn_fii
+            best_fii          = np.nanargmax(sharpe_vals_fii)
+            idx_sharpe_fii    = hull_idxs_fii[best_fii]
+            w_sharpe_fii      = sim_w_fii[idx_sharpe_fii]
+            ticks_fii         = sim_tickers_fii[idx_sharpe_fii]
+            # Recalcula ret/vol compostos para o ponto ótimo
+            ret_sh_fii, vol_sh_fii = dynamic_compound_portfolio_metrics(
+                prices_fii, w_sharpe_fii, ticks_fii
             )
-            if vol_lin_fii.size > 0:
-                sharpe_vals     = (ret_lin_fii - rf) / vol_lin_fii
-                best            = np.nanargmax(sharpe_vals)
-                idx_sharpe_fii  = idxs[best]
-                w_sharpe_fii    = sim_w_fii[idx_sharpe_fii]
-                ret_sh_fii, vol_sh_fii = sim_ret_fii[idx_sharpe_fii], sim_vol_fii[idx_sharpe_fii]
-                sharpe_liquida_fii = sharpe_vals[best]
-            else:
-                w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = \
-                    pick_best_sim(sim_ret_fii, sim_vol_fii, sim_w_fii, rf)
-                vol_lin_fii = ret_lin_fii = np.array([])
+            sharpe_liquida_fii = (ret_sh_fii - rf) / vol_sh_fii
         else:
-            vol_lin_fii = ret_lin_fii = np.array([])
-            w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
+            # fallback para casos degenerados
+            w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = \
+                pick_best_sim(sim_ret_fii, sim_vol_fii, sim_w_fii, rf)
+            vol_lin_dyn_fii = ret_lin_dyn_fii = np.array([])
+            ticks_fii = []
 
         # Combinado (Ações + FIIs)
         if sim_vol_comb.size > 0:
