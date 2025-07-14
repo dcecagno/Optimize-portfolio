@@ -1790,9 +1790,10 @@ def main():
             w_sharpe_fii = ret_sh_fii = vol_sh_fii = sharpe_liquida_fii = np.nan
 
         # FRONTEIRA + SHARPE MÁXIMO – COMBINADO
+        ticks_comb = []  # garante que sempre exista
         if sim_vol_comb.size > 0:
 
-            # 1) Gera fronteira composta sem extrapolar
+            # 1) Constrói a fronteira eficiente composta (sem extrapolar)
             vol_lin_comb, ret_lin_comb, idx_sharpe_comb, _ = build_efficient_frontier_compound(
                 sim_vol_comb,
                 sim_ret_comb,
@@ -1802,27 +1803,30 @@ def main():
                 rf
             )
 
-            # 2) Se temos um ponto válido de Sharpe na fronteira…
-            if vol_lin_comb.size > 0 and idx_sharpe_comb is not None:
-                # extrai pesos e tickers
-                w_sharpe_comb = sim_w_comb[int(idx_sharpe_comb)]
-                ticks_comb    = sim_tickers_comb[int(idx_sharpe_comb)]
+            # 2) Se encontramos um índice válido na fronteira…
+            if idx_sharpe_comb is not None and isinstance(idx_sharpe_comb, int):
+                w_sharpe_comb = sim_w_comb[idx_sharpe_comb]
+                ticks_comb    = sim_tickers_comb[idx_sharpe_comb]
 
-                # recalcula retorno/volatilidade compostos
+                # 3) Recalcula retorno/volatilidade compostos via log-returns
                 ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
                     prices_comb, w_sharpe_comb, ticks_comb
                 )
                 sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
 
             else:
-                # fallback: escolhe o melhor pelas simulações dinâmicas
+                # fallback: escolhe o melhor com base nas simulações diretas
                 w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
                     pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
+                # seleciona também os tickers correspondentes
+                idx = np.nanargmax((sim_ret_comb - rf) / sim_vol_comb)
+                ticks_comb = sim_tickers_comb[idx]
                 vol_lin_comb, ret_lin_comb = np.array([]), np.array([])
 
         else:
             vol_lin_comb = ret_lin_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
+            ticks_comb = []
 
         
         tickers_man = normalizar_tickers(tickers_man)
