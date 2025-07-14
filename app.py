@@ -379,19 +379,61 @@ def convex_frontier_with_indices(vols: np.ndarray, rets: np.ndarray):
     vol_f, ret_f = map(np.array, zip(*envelope))
     return vol_f, ret_f, idxs
 
+def ensure_simulations(
+    prices_comb, tickers_comb,
+    prices_aco,  tickers_aco,
+    prices_fii,  tickers_fii,
+    n_sim, min_assets, max_assets,
+    min_w, max_w, seed, alpha_dirichlet
+):
+    """
+    Garante que as simulações (combinado, só ações e só FIIs) sejam executadas
+    apenas uma vez, armazenadas em session_state, e retorna todas as tuplas.
+    """
+    if "sim_done" not in st.session_state:
+        st.session_state.sim_comb = simulate_portfolios(
+            prices_comb, tickers_comb,
+            n_sim, min_assets, max_assets,
+            min_w, max_w, seed, alpha_dirichlet,
+            acoes=set(tickers_aco), fiis=set(tickers_fii)
+        )
+        st.session_state.sim_aco = simulate_portfolios(
+            prices_aco, tickers_aco,
+            n_sim, min_assets, max_assets,
+            min_w, max_w, seed, alpha_dirichlet,
+            acoes=set(), fiis=set()
+        )
+        st.session_state.sim_fii = simulate_portfolios(
+            prices_fii, tickers_fii,
+            n_sim, min_assets, max_assets,
+            min_w, max_w, seed, alpha_dirichlet,
+            acoes=set(), fiis=set()
+        )
+        st.session_state.sim_done = True
+
+    sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tk_comb = st.session_state.sim_comb
+    sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tk_aco  = st.session_state.sim_aco
+    sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tk_fii  = st.session_state.sim_fii
+
+    return (
+        sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tk_comb,
+        sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tk_aco,
+        sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tk_fii
+    )
+
 # =======================
 # Funções de Plotagem
 # =======================
 
 def plot_results(
     sim_vol_dyn_aco, sim_ret_dyn_aco,
-    vol_lin_aco, ret_lin_aco,
+    vol_lin_dyn_aco, ret_lin_dyn_aco,
     vol_sh_aco, ret_sh_aco,
     sim_vol_dyn_fii, sim_ret_dyn_fii,
-    vol_lin_fii, ret_lin_fii,
+    vol_lin_dyn_fii, ret_lin_dyn_fii,
     vol_sh_fii, ret_sh_fii,
     sim_vol_dyn_comb, sim_ret_dyn_comb,
-    vol_lin_comb, ret_lin_comb,
+    vol_lin_dyn_comb, ret_lin_dyn_comb,
     vol_sh_comb, ret_sh_comb,
     vol_man, ret_man,
     vol_opt_manual, ret_opt_manual,
@@ -413,14 +455,14 @@ def plot_results(
                    s=8, alpha=0.12, c='green')
 
     # Efficient frontier lines (compostos)
-    if vol_lin_comb.size > 0:
-        ax.plot(vol_lin_comb, ret_lin_comb,
+    if vol_lin_dyn_comb.size > 0:
+        ax.plot(vol_lin_dyn_comb, ret_lin_dyn_comb,
                 '-', c='red', lw=2, label='Fronteira – Ações+FIIs')
-    if vol_lin_aco.size > 0:
-        ax.plot(vol_lin_aco, ret_lin_aco,
+    if vol_lin_dyn_aco.size > 0:
+        ax.plot(vol_lin_dyn_aco, ret_lin_dyn_aco,
                 '-', c='blue', lw=2, label='Fronteira – Ações')
-    if vol_lin_fii.size > 0:
-        ax.plot(vol_lin_fii, ret_lin_fii,
+    if vol_lin_dyn_fii.size > 0:
+        ax.plot(vol_lin_dyn_fii, ret_lin_dyn_fii,
                 '-', c='green', lw=2, label='Fronteira – FIIs')
 
     # Sharpe max stars (compostos)
@@ -1526,67 +1568,18 @@ def main():
         # Volatilidade anualizada
         vol_anual_ibov = rets_ibov.std() * np.sqrt(252)
 
-        # Conjuntos para classificação da carteira combinada
-        set_acoes = set(acoes_validos)
-        set_fiis = set(fii_validos)
-
-        # ================================
-        # 1) Simulações (cache em session_state)
-        # ================================
-        if "simulacoes_realizadas" not in st.session_state:
-            # combinado (Ações + FIIs)
-            (st.session_state.sim_ret_comb,
-            st.session_state.sim_vol_comb,
-            st.session_state.sim_w_comb,
-            st.session_state.sim_tickers_comb) = simulate_portfolios(
-                prices_comb,
-                acoes_validos + fii_validos,
-                n_sim, min_assets, max_assets,
-                min_w, max_w, seed, alpha_dirichlet,
-                acoes=set(acoes_validos), fiis=set(fii_validos)
-            )
-
-            # somente Ações
-            (st.session_state.sim_ret_aco,
-            st.session_state.sim_vol_aco,
-            st.session_state.sim_w_aco,
-            st.session_state.sim_tickers_aco) = simulate_portfolios(
-                prices_aco,
-                acoes_validos,
-                n_sim, min_assets, max_assets,
-                min_w, max_w, seed, alpha_dirichlet,
-                acoes=set(), fiis=set()
-            )
-
-            # somente FIIs
-            (st.session_state.sim_ret_fii,
-            st.session_state.sim_vol_fii,
-            st.session_state.sim_w_fii,
-            st.session_state.sim_tickers_fii) = simulate_portfolios(
-                prices_fii,
-                fii_validos,
-                n_sim, min_assets, max_assets,
-                min_w, max_w, seed, alpha_dirichlet,
-                acoes=set(), fiis=set()
-            )
-
-            st.session_state.simulacoes_realizadas = True
-
-        # recupera do cache
-        sim_ret_comb    = st.session_state.sim_ret_comb
-        sim_vol_comb    = st.session_state.sim_vol_comb
-        sim_w_comb      = st.session_state.sim_w_comb
-        sim_tickers_comb= st.session_state.sim_tickers_comb
-
-        sim_ret_aco     = st.session_state.sim_ret_aco
-        sim_vol_aco     = st.session_state.sim_vol_aco
-        sim_w_aco       = st.session_state.sim_w_aco
-        sim_tickers_aco = st.session_state.sim_tickers_aco
-
-        sim_ret_fii     = st.session_state.sim_ret_fii
-        sim_vol_fii     = st.session_state.sim_vol_fii
-        sim_w_fii       = st.session_state.sim_w_fii
-        sim_tickers_fii = st.session_state.sim_tickers_fii
+        # 1) garante e carrega as 3 simulações
+        (
+            sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb,
+            sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tickers_aco,
+            sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tickers_fii
+        ) = ensure_simulations(
+            prices_comb, acoes_validos + fii_validos,
+            prices_aco,  acoes_validos,
+            prices_fii,  fii_validos,
+            n_sim, min_assets, max_assets,
+            min_w, max_w, seed, alpha_dirichlet
+        )
 
         # ================================
         # 2) Cálculo de return & vol compostos
@@ -1627,8 +1620,6 @@ def main():
             sim_vol_dyn_comb, sim_ret_dyn_comb
         )
 
-
-
         # Filtra por composição (só misto)
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
             sim_tickers_comb,
@@ -1655,8 +1646,7 @@ def main():
             idx_sharpe_aco  = hull_idxs_aco[best_aco]
             w_sharpe_aco    = sim_w_aco[idx_sharpe_aco]
             ticks_aco       = sim_tickers_aco[idx_sharpe_aco]
-            # Já temos ret/vol compostos para cada simulação,
-            # mas vamos recomputar para o ponto ótimo
+            # Recalcula ret/vol compostos para o ponto ótimo
             ret_sh_aco, vol_sh_aco = dynamic_compound_portfolio_metrics(
                 prices_aco, w_sharpe_aco, ticks_aco
             )
