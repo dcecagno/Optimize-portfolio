@@ -1641,6 +1641,16 @@ def main():
             )
             st.session_state.simulacoes_realizadas = True
 
+
+        # Combinado (Ações + FIIs)
+        sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb = simulate_portfolios(
+            prices_comb,
+            acoes_validos + fii_validos,
+            n_sim, min_assets, max_assets,
+            min_w, max_w, seed, alpha_dirichlet,
+            acoes=set(acoes_validos), fiis=set(fii_validos)
+        )
+
         # Simulação apenas com ações (sem exigir FII)
         sim_ret_aco, sim_vol_aco, sim_w_aco, ativos_aco = simulate_portfolios(
             prices_aco, acoes_validos,
@@ -1666,8 +1676,22 @@ def main():
         )
 
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
-            sim_tickers_comb, set(acoes_validos), set(fii_validos)
+            sim_tickers_comb,
+            set(acoes_validos),
+            set(fii_validos)
         )
+
+        if idx_misto:
+            sim_ret_comb    = sim_ret_comb[idx_misto]
+            sim_vol_comb    = sim_vol_comb[idx_misto]
+            sim_w_comb      = [sim_w_comb[i] for i in idx_misto]
+            sim_tickers_comb= [sim_tickers_comb[i] for i in idx_misto]
+        else:
+            # nenhum misto válido
+            sim_ret_comb = np.array([])
+            sim_vol_comb = np.array([])
+            sim_w_comb   = []
+            sim_tickers_comb = []
 
 
        
@@ -1721,23 +1745,25 @@ def main():
 
         # FRONTEIRA + SHARPE MÁXIMO – COMBINADO
         if sim_vol_comb.size > 0:
-            vol_lin_comb, ret_lin_comb, idxs = convex_frontier_with_indices(
+            vol_lin_comb, ret_lin_comb, hull_idxs = convex_frontier_with_indices(
                 sim_vol_comb, sim_ret_comb
             )
             if vol_lin_comb.size > 0:
                 sharpe_vals = (ret_lin_comb - rf) / vol_lin_comb
-                best = np.nanargmax(sharpe_vals)
-                idx_sharpe_comb     = idxs[best]
+                best        = np.nanargmax(sharpe_vals)
+                idx_sharpe_comb     = hull_idxs[best]
                 w_sharpe_comb       = sim_w_comb[idx_sharpe_comb]
                 ret_sh_comb         = sim_ret_comb[idx_sharpe_comb]
                 vol_sh_comb         = sim_vol_comb[idx_sharpe_comb]
                 sharpe_liquida_comb = sharpe_vals[best]
             else:
+                # fallback total
                 w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
                     pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
                 vol_lin_comb, ret_lin_comb = np.array([]), np.array([])
         else:
-            vol_lin_comb, ret_lin_comb = np.array([]), np.array([])
+            # sem misto → zera tudo
+            vol_lin_comb = ret_lin_comb = np.array([])
             w_sharpe_comb = ret_sh_comb = vol_sh_comb = sharpe_liquida_comb = np.nan
 
         
