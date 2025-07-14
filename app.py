@@ -552,7 +552,7 @@ def plot_results(
     # Efficient frontier lines (compostos)
     if vol_lin_comb.size > 0:
         ax.plot(vol_lin_comb, ret_lin_comb,
-                '-', c='red', lw=2, label='Fronteira – Ações+FII')
+                '-', c='red', lw=2, label='Fronteira – Ações+FIIs')
     if vol_lin_aco.size > 0:
         ax.plot(vol_lin_aco, ret_lin_aco,
                 '-', c='blue', lw=2, label='Fronteira – Ações')
@@ -565,7 +565,7 @@ def plot_results(
         ax.scatter(vol_sh_comb, ret_sh_comb,
                    marker='*', c='red', s=180,
                    edgecolors='black', linewidths=1.0,
-                   label='Sharpe Máx – Ações+FII')
+                   label='Sharpe Máx – Ações+FIIs')
     if not np.isnan(vol_sh_aco):
         ax.scatter(vol_sh_aco, ret_sh_aco,
                    marker='*', c='blue', s=180,
@@ -2068,13 +2068,13 @@ def main():
 
         # Plotagem
         plot_results(
-            sim_vol_aco, sim_ret_aco,
+            sim_vol_dyn_aco, sim_ret_dyn_aco,
             vol_lin_aco, ret_lin_aco,
             vol_sh_aco, ret_sh_aco,
-            sim_vol_fii, sim_ret_fii,
+            sim_vol_dyn_fii, sim_ret_dyn_fii,
             vol_lin_fii, ret_lin_fii,
             vol_sh_fii, ret_sh_fii,
-            sim_vol_comb, sim_ret_comb,
+            sim_vol_dyn_comb, sim_ret_dyn_comb,
             vol_lin_comb, ret_lin_comb,
             vol_sh_comb, ret_sh_comb,
             vol_man, ret_man,
