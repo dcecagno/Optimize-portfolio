@@ -1930,8 +1930,7 @@ def main():
                         tickers_man,          # lista de manuais
                         valores_man,          # valores correspondentes
                         [],                   # ativos_sugeridos → vazio faz a função escolher
-                        mu_comb,              # pd.Series de retornos combinados (composto)
-                        cov_comb,             # pd.DataFrame de covariâncias combinadas
+                        prices_comb,          # DataFrame de preços ajustados do universo combinado
                         percentual_adicional, # float em [0,1]
                         rf                    # taxa livre de risco
                     )
