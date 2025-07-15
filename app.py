@@ -492,31 +492,35 @@ def compute_frontier_and_sharpe(
 ) -> dict:
     """
     Dada a nuvem dinâmica e os pesos/tickers originais, constrói:
-      - frontier_vol, frontier_ret: envelope convexo da nuvem
+      - front_vol, front_ret: envelope convexo da nuvem
       - hull_idxs: índices dos vértices no array dinâmico
       - w_sh, ticks_sh, ret_sh, vol_sh, sharpe_sh: ponto de Sharpe Máx
     Retorna um dict com todas essas informações.
     """
-    # 1) envelope convexo
-    vol_front, ret_front, hull_idxs = convex_frontier_with_indices(
+    # 1) extrai o envelope convexo (sem garantia de ordem)
+    front_vol, front_ret, hull_idxs = convex_frontier_with_indices(
         sim_vol_dyn, sim_ret_dyn
     )
 
-    # 2) extrai ponto de Sharpe na fronteira
-    if vol_front.size > 0:
-        sharpe_vals = (ret_front - rf) / vol_front
+    # 2) ordena a fronteira pelo risco (volatilidade) crescente
+    order     = np.argsort(front_vol)
+    front_vol = front_vol[order]
+    front_ret = front_ret[order]
+    hull_idxs = np.array(hull_idxs)[order]
+
+    # 3) extrai ponto de Sharpe na fronteira ordenada
+    if front_vol.size > 0:
+        sharpe_vals = (front_ret - rf) / front_vol
         best        = np.nanargmax(sharpe_vals)
         idxf        = hull_idxs[best]
 
-        w_sh    = sim_w[idxf]
-        ticks_sh= sim_tickers[idxf]
+        w_sh, ticks_sh = sim_w[idxf], sim_tickers[idxf]
         # garante métricas compostas exatas no ponto ótimo
         ret_sh, vol_sh = dynamic_compound_portfolio_metrics(
             prices, w_sh, ticks_sh
         )
         sharpe_sh = (ret_sh - rf) / vol_sh
     else:
-        # fallback
         idxf = None
         w_sh, ret_sh, vol_sh, sharpe_sh = pick_best_sim(
             sim_ret_dyn, sim_vol_dyn, sim_w, rf
@@ -524,15 +528,15 @@ def compute_frontier_and_sharpe(
         ticks_sh = []
 
     return {
-        "front_vol":   vol_front,
-        "front_ret":   ret_front,
-        "hull_idxs":   hull_idxs,
-        "idx_sh":      idxf,
-        "w_sh":        w_sh,
-        "ticks_sh":    ticks_sh,
-        "ret_sh":      ret_sh,
-        "vol_sh":      vol_sh,
-        "sharpe_sh":   sharpe_sh
+        "front_vol":  front_vol,
+        "front_ret":  front_ret,
+        "hull_idxs":  hull_idxs,
+        "idx_sh":     idxf,
+        "w_sh":       w_sh,
+        "ticks_sh":   ticks_sh,
+        "ret_sh":     ret_sh,
+        "vol_sh":     vol_sh,
+        "sharpe_sh":  sharpe_sh
     }
 
 # =======================
