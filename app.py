@@ -1991,10 +1991,6 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_aco, w_sharpe_aco, ticks
             )
-            st.write("🏷️ Sharpe Máx – Ações")
-            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
-            st.write(f"   ret_passado = {ret_sh_aco:.2%} | vol_passado = {vol_sh_aco:.2%}")
-            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_aco.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – Ações",
@@ -2016,10 +2012,6 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_fii, w_sharpe_fii, ticks
             )
-            st.write("🏷️ Sharpe Máx – FIIs")
-            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
-            st.write(f"   ret_passado = {ret_sh_fii:.2%} | vol_passado = {vol_sh_fii:.2%}")
-            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_fii.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – FIIs",
