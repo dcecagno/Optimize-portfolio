@@ -9,42 +9,9 @@ import matplotlib.ticker as mtick
 import seaborn as sns
 import streamlit as st
 
-
 # =======================
 # Funções Auxiliares
 # =======================
-
-@st.cache_data(show_spinner=False)
-def get_simulations(
-    prices_comb, tickers_comb,
-    prices_aco,  tickers_aco,
-    prices_fii,  tickers_fii,
-    n_sim, min_assets, max_assets,
-    min_w, max_w, seed, alpha_dirichlet
-):
-    """
-    Retorna 3 tuplas: sim_comb, sim_aco e sim_fii,
-    como saída de simulate_portfolios para cada universo.
-    """
-    sim_comb = simulate_portfolios(
-        prices_comb, tickers_comb,
-        n_sim, min_assets, max_assets,
-        min_w, max_w, seed, alpha_dirichlet,
-        acoes=set(tickers_aco), fiis=set(tickers_fii)
-    )
-    sim_aco = simulate_portfolios(
-        prices_aco, tickers_aco,
-        n_sim, min_assets, max_assets,
-        min_w, max_w, seed, alpha_dirichlet,
-        acoes=set(), fiis=set()
-    )
-    sim_fii = simulate_portfolios(
-        prices_fii, tickers_fii,
-        n_sim, min_assets, max_assets,
-        min_w, max_w, seed, alpha_dirichlet,
-        acoes=set(), fiis=set()
-    )
-    return sim_comb, sim_aco, sim_fii
 
 def _read_close_prices(path_csv: str) -> pd.DataFrame:
     """
@@ -227,10 +194,23 @@ def filtrar_por_composicao(ativos_simulados: list[list[str]], acoes: set, fiis: 
 
     return so_acoes, so_fiis, mistos
 
+def filtrar_por_indices(arr, indices):
+    if len(indices) == 0:
+        return np.array([])
+    if isinstance(arr, np.ndarray):
+        return arr[indices]
+    else:
+        return [arr[i] for i in indices]
+
 # =======================
 # Funções de Otimização
 # =======================
 
+def negative_sharpe(w, mu, cov, rf):
+    ret = np.dot(mu, w)
+    vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
+    return -(ret - rf) / vol
+    
 def optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w, rf):
     from scipy.optimize import minimize
     n_assets = len(mu_vec)
@@ -260,6 +240,16 @@ def optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w, rf):
         return w_opt, sharpe, True, "Sucesso"
     else:
         return x0, 0.0, False, result.message
+
+def rebalance_weights(weights, min_w=0.03):
+    """
+    Zera os pesos abaixo de min_w e rebalanceia os restantes para somar 100%.
+    """
+    weights = np.where(weights < min_w, 0.0, weights)
+    total = weights.sum()
+    if total > 0:
+        weights = weights / total
+    return weights
 
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
@@ -380,6 +370,51 @@ def pick_best_sim(
     idx = np.nanargmax(sharpe)
     return sim_w[idx], sim_ret[idx], sim_vol[idx], sharpe[idx]
 
+def convex_frontier(vols: np.ndarray, rets: np.ndarray):
+    """
+    Retorna (vol_interp, ret_interp, idx_front) com interpolação suave da fronteira eficiente.
+    Se houver menos de 2 pontos no envelope superior, retorna os pontos brutos.
+    """
+    if len(vols) < 3 or len(rets) < 3:
+        return np.array([]), np.array([]), []
+
+    pts = np.column_stack((vols, rets))
+    
+    try:
+        hull = ConvexHull(pts)
+    except Exception:
+        return np.array([]), np.array([]), []
+
+    verts = hull.vertices
+    verts = sorted(verts, key=lambda i: pts[i, 0])
+
+    frontier = []
+    idx_front = []
+    cur_max_ret = -np.inf
+    for i in verts:
+        vol, ret = pts[i]
+        if ret >= cur_max_ret:
+            frontier.append((vol, ret))
+            idx_front.append(i)
+            cur_max_ret = ret
+
+    if len(frontier) < 2:
+        vol_f, ret_f = zip(*frontier) if frontier else ([], [])
+        return np.array(vol_f), np.array(ret_f), idx_front
+
+    vol_f, ret_f = zip(*frontier)
+    vol_f = np.array(vol_f)
+    ret_f = np.array(ret_f)
+
+    try:
+        interpolador = PchipInterpolator(vol_f, ret_f)
+        vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
+        ret_interp = interpolador(vol_interp)
+        return vol_interp, ret_interp, idx_front
+    except Exception:
+        # fallback: retorna os pontos brutos
+        return vol_f, ret_f, idx_front
+
 def convex_frontier_with_indices(vols: np.ndarray, rets: np.ndarray):
     """
     Retorna
@@ -412,132 +447,74 @@ def convex_frontier_with_indices(vols: np.ndarray, rets: np.ndarray):
     vol_f, ret_f = map(np.array, zip(*envelope))
     return vol_f, ret_f, idxs
 
-# =======================
-# Funções de Execução
-# =======================
-
-def ensure_simulations(
-    prices_comb, tickers_comb,
-    prices_aco,  tickers_aco,
-    prices_fii,  tickers_fii,
-    n_sim, min_assets, max_assets,
-    min_w, max_w, seed, alpha_dirichlet
-):
+def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tickers, rf=0.0):
     """
-    Garante que as simulações (combinado, só ações e só FIIs) sejam executadas
-    apenas uma vez, armazenadas em session_state, e retorna todas as tuplas.
+    Constrói a fronteira eficiente com retorno composto anualizado.
+    Retorna: vol_interp, ret_interp, idx_sharpe_max, ponto_sharpe
     """
-    if "sim_done" not in st.session_state:
-        st.session_state.sim_comb = simulate_portfolios(
-            prices_comb, tickers_comb,
-            n_sim, min_assets, max_assets,
-            min_w, max_w, seed, alpha_dirichlet,
-            acoes=set(tickers_aco), fiis=set(tickers_fii)
-        )
-        st.session_state.sim_aco = simulate_portfolios(
-            prices_aco, tickers_aco,
-            n_sim, min_assets, max_assets,
-            min_w, max_w, seed, alpha_dirichlet,
-            acoes=set(), fiis=set()
-        )
-        st.session_state.sim_fii = simulate_portfolios(
-            prices_fii, tickers_fii,
-            n_sim, min_assets, max_assets,
-            min_w, max_w, seed, alpha_dirichlet,
-            acoes=set(), fiis=set()
-        )
-        st.session_state.sim_done = True
+    if len(sim_vol) < 3 or len(sim_ret) < 3:
+        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
 
-    sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tk_comb = st.session_state.sim_comb
-    sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tk_aco  = st.session_state.sim_aco
-    sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tk_fii  = st.session_state.sim_fii
+    pts = np.column_stack((sim_vol, sim_ret))
+    try:
+        hull = ConvexHull(pts)
+    except Exception:
+        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
 
-    return (
-        sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tk_comb,
-        sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tk_aco,
-        sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tk_fii
-    )
+    verts = sorted(hull.vertices, key=lambda i: pts[i, 0])
 
-def compute_dynamic_cloud(
-    sim_ret: np.ndarray,
-    sim_vol: np.ndarray,
-    sim_w: list[np.ndarray],
-    sim_tickers: list[list[str]],
-    prices: pd.DataFrame
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Dada a simulação bruta (sim_ret, sim_vol, sim_w, sim_tickers)
-    e o DataFrame de preços, retorna duas arrays:
-      - sim_ret_dyn: retornos compostos via log-returns
-      - sim_vol_dyn: volatilidades compostas
-    """
-    n = sim_ret.shape[0]
-    sim_ret_dyn = np.empty(n, dtype=float)
-    sim_vol_dyn = np.empty(n, dtype=float)
+    dyn_vol = []
+    dyn_ret = []
+    idx_validos = []
 
-    for i, (w, ticks) in enumerate(zip(sim_w, sim_tickers)):
-        r, v = dynamic_compound_portfolio_metrics(prices, w, ticks)
-        sim_ret_dyn[i] = r
-        sim_vol_dyn[i] = v
+    for i in verts:
+        try:
+            w = sim_weights[i]
+            ret_c, vol_c = dynamic_compound_portfolio_metrics(prices, w, tickers)
+            if not np.isnan(ret_c) and not np.isnan(vol_c):
+                dyn_ret.append(ret_c)
+                dyn_vol.append(vol_c)
+                idx_validos.append(i)
+        except:
+            continue
 
-    return sim_ret_dyn, sim_vol_dyn
+    if len(dyn_ret) < 2:
+        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
 
-def compute_frontier_and_sharpe(
-    sim_ret_dyn: np.ndarray,
-    sim_vol_dyn: np.ndarray,
-    sim_w: list[np.ndarray],
-    sim_tickers: list[list[str]],
-    prices: pd.DataFrame,
-    rf: float
-) -> dict:
-    """
-    Dada a nuvem dinâmica e os pesos/tickers originais, constrói:
-      - front_vol, front_ret: envelope convexo da nuvem
-      - hull_idxs: índices dos vértices no array dinâmico
-      - w_sh, ticks_sh, ret_sh, vol_sh, sharpe_sh: ponto de Sharpe Máx
-    Retorna um dict com todas essas informações.
-    """
-    # 1) extrai o envelope convexo (sem garantia de ordem)
-    front_vol, front_ret, hull_idxs = convex_frontier_with_indices(
-        sim_vol_dyn, sim_ret_dyn
-    )
+    # Filtra envelope superior
+    frontier = []
+    idx_front = []
+    cur_max_ret = -np.inf
+    for i, (v, r) in enumerate(zip(dyn_vol, dyn_ret)):
+        if r >= cur_max_ret:
+            frontier.append((v, r))
+            idx_front.append(i)
+            cur_max_ret = r
 
-    # 2) ordena a fronteira pelo risco (volatilidade) crescente
-    order     = np.argsort(front_vol)
-    front_vol = front_vol[order]
-    front_ret = front_ret[order]
-    hull_idxs = np.array(hull_idxs)[order]
+    if len(frontier) < 2:
+        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
 
-    # 3) extrai ponto de Sharpe na fronteira ordenada
-    if front_vol.size > 0:
-        sharpe_vals = (front_ret - rf) / front_vol
-        best        = np.nanargmax(sharpe_vals)
-        idxf        = hull_idxs[best]
+    # Ordena por volatilidade
+    frontier_sorted = sorted(frontier, key=lambda x: x[0])
+    vol_f, ret_f = zip(*frontier_sorted)
+    vol_f = np.array(vol_f)
+    ret_f = np.array(ret_f)
 
-        w_sh, ticks_sh = sim_w[idxf], sim_tickers[idxf]
-        # garante métricas compostas exatas no ponto ótimo
-        ret_sh, vol_sh = dynamic_compound_portfolio_metrics(
-            prices, w_sh, ticks_sh
-        )
-        sharpe_sh = (ret_sh - rf) / vol_sh
-    else:
-        idxf = None
-        w_sh, ret_sh, vol_sh, sharpe_sh = pick_best_sim(
-            sim_ret_dyn, sim_vol_dyn, sim_w, rf
-        )
-        ticks_sh = []
+    # Interpolação suave
+    interpolador = PchipInterpolator(vol_f, ret_f)
+    vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
+    ret_interp = interpolador(vol_interp)
 
-    return {
-        "front_vol":  front_vol,
-        "front_ret":  front_ret,
-        "hull_idxs":  hull_idxs,
-        "idx_sh":     idxf,
-        "w_sh":       w_sh,
-        "ticks_sh":   ticks_sh,
-        "ret_sh":     ret_sh,
-        "vol_sh":     vol_sh,
-        "sharpe_sh":  sharpe_sh
-    }
+    # Melhor Sharpe
+    sharpe_vals = (ret_f - rf) / vol_f
+    best_i = np.argmax(sharpe_vals)
+    idx_sharpe = idx_validos[idx_front[best_i]]
+    w_sharpe = sim_weights[idx_sharpe]
+    ret_sharpe = ret_f[best_i]
+    vol_sharpe = vol_f[best_i]
+    sharpe_max = sharpe_vals[best_i]
+
+    return vol_interp, ret_interp, idx_sharpe, (ret_sharpe, vol_sharpe, sharpe_max, w_sharpe)
 
 # =======================
 # Funções de Plotagem
@@ -545,13 +522,13 @@ def compute_frontier_and_sharpe(
 
 def plot_results(
     sim_vol_dyn_aco, sim_ret_dyn_aco,
-    vol_lin_dyn_aco, ret_lin_dyn_aco,
+    vol_lin_aco, ret_lin_aco,
     vol_sh_aco, ret_sh_aco,
     sim_vol_dyn_fii, sim_ret_dyn_fii,
-    vol_lin_dyn_fii, ret_lin_dyn_fii,
+    vol_lin_fii, ret_lin_fii,
     vol_sh_fii, ret_sh_fii,
     sim_vol_dyn_comb, sim_ret_dyn_comb,
-    vol_lin_dyn_comb, ret_lin_dyn_comb,
+    vol_lin_comb, ret_lin_comb,
     vol_sh_comb, ret_sh_comb,
     vol_man, ret_man,
     vol_opt_manual, ret_opt_manual,
@@ -573,12 +550,15 @@ def plot_results(
                    s=8, alpha=0.12, c='green')
 
     # Efficient frontier lines (compostos)
-    if vol_lin_dyn_comb.size > 0:
-        ax.plot(vol_lin_dyn_comb, ret_lin_dyn_comb, '-', c='red', lw=2)
-    if vol_lin_dyn_aco.size > 0:
-        ax.plot(vol_lin_dyn_aco, ret_lin_dyn_aco, '-', c='blue', lw=2)
-    if vol_lin_dyn_fii.size > 0:
-        ax.plot(vol_lin_dyn_fii, ret_lin_dyn_fii, '-', c='green', lw=2)
+    if vol_lin_comb.size > 0:
+        ax.plot(vol_lin_comb, ret_lin_comb,
+                '-', c='red', lw=2, label='Fronteira – Ações+FIIs')
+    if vol_lin_aco.size > 0:
+        ax.plot(vol_lin_aco, ret_lin_aco,
+                '-', c='blue', lw=2, label='Fronteira – Ações')
+    if vol_lin_fii.size > 0:
+        ax.plot(vol_lin_fii, ret_lin_fii,
+                '-', c='green', lw=2, label='Fronteira – FIIs')
 
     # Sharpe max stars (compostos)
     if not np.isnan(vol_sh_comb):
@@ -1683,52 +1663,189 @@ def main():
         # Volatilidade anualizada
         vol_anual_ibov = rets_ibov.std() * np.sqrt(252)
 
-        # 1) Simulações em cache (reexecuta se qualquer parâmetro mudar)
-        (sim_comb, sim_aco, sim_fii) = get_simulations(
-            prices_comb, acoes_validos + fii_validos,
-            prices_aco,  acoes_validos,
-            prices_fii,  fii_validos,
-            n_sim, min_assets, max_assets,
-            min_w, max_w, seed, alpha_dirichlet
+        # Conjuntos para classificação da carteira combinada
+        set_acoes = set(acoes_validos)
+        set_fiis = set(fii_validos)
+
+        # ================================
+        # 1) Simulações (cache em session_state)
+        # ================================
+        if "simulacoes_realizadas" not in st.session_state:
+            # combinado (Ações + FIIs)
+            (st.session_state.sim_ret_comb,
+            st.session_state.sim_vol_comb,
+            st.session_state.sim_w_comb,
+            st.session_state.sim_tickers_comb) = simulate_portfolios(
+                prices_comb,
+                acoes_validos + fii_validos,
+                n_sim, min_assets, max_assets,
+                min_w, max_w, seed, alpha_dirichlet,
+                acoes=set(acoes_validos), fiis=set(fii_validos)
+            )
+
+            # somente Ações
+            (st.session_state.sim_ret_aco,
+            st.session_state.sim_vol_aco,
+            st.session_state.sim_w_aco,
+            st.session_state.sim_tickers_aco) = simulate_portfolios(
+                prices_aco,
+                acoes_validos,
+                n_sim, min_assets, max_assets,
+                min_w, max_w, seed, alpha_dirichlet,
+                acoes=set(), fiis=set()
+            )
+
+            # somente FIIs
+            (st.session_state.sim_ret_fii,
+            st.session_state.sim_vol_fii,
+            st.session_state.sim_w_fii,
+            st.session_state.sim_tickers_fii) = simulate_portfolios(
+                prices_fii,
+                fii_validos,
+                n_sim, min_assets, max_assets,
+                min_w, max_w, seed, alpha_dirichlet,
+                acoes=set(), fiis=set()
+            )
+
+            st.session_state.simulacoes_realizadas = True
+
+        # recupera do cache
+        sim_ret_comb    = st.session_state.sim_ret_comb
+        sim_vol_comb    = st.session_state.sim_vol_comb
+        sim_w_comb      = st.session_state.sim_w_comb
+        sim_tickers_comb= st.session_state.sim_tickers_comb
+
+        sim_ret_aco     = st.session_state.sim_ret_aco
+        sim_vol_aco     = st.session_state.sim_vol_aco
+        sim_w_aco       = st.session_state.sim_w_aco
+        sim_tickers_aco = st.session_state.sim_tickers_aco
+
+        sim_ret_fii     = st.session_state.sim_ret_fii
+        sim_vol_fii     = st.session_state.sim_vol_fii
+        sim_w_fii       = st.session_state.sim_w_fii
+        sim_tickers_fii = st.session_state.sim_tickers_fii
+
+        # ================================
+        # 2) Cálculo de return & vol compostos
+        #    (dynamic_compound_portfolio_metrics)
+        # ================================
+        # Ações
+        sim_ret_dyn_aco = np.empty_like(sim_ret_aco)
+        sim_vol_dyn_aco = np.empty_like(sim_vol_aco)
+        for i, (w, ticks) in enumerate(zip(sim_w_aco, sim_tickers_aco)):
+            r_dyn, v_dyn = dynamic_compound_portfolio_metrics(prices_aco, w, ticks)
+            sim_ret_dyn_aco[i] = r_dyn
+            sim_vol_dyn_aco[i] = v_dyn
+
+        # FIIs
+        sim_ret_dyn_fii = np.empty_like(sim_ret_fii)
+        sim_vol_dyn_fii = np.empty_like(sim_vol_fii)
+        for i, (w, ticks) in enumerate(zip(sim_w_fii, sim_tickers_fii)):
+            r, v = dynamic_compound_portfolio_metrics(prices_fii, w, ticks)
+            sim_ret_dyn_fii[i] = r
+            sim_vol_dyn_fii[i] = v
+
+        # Combinado (Ações + FIIs)
+        sim_ret_dyn_comb = np.empty_like(sim_ret_comb)
+        sim_vol_dyn_comb = np.empty_like(sim_vol_comb)
+        for i, (w, ticks) in enumerate(zip(sim_w_comb, sim_tickers_comb)):
+            r, v = dynamic_compound_portfolio_metrics(prices_comb, w, ticks)
+            sim_ret_dyn_comb[i] = r
+            sim_vol_dyn_comb[i] = v
+
+        # 3) Constrói a fronteira convexa em cima da nuvem composta
+        vol_lin_dyn_aco, ret_lin_dyn_aco, hull_idxs_aco = convex_frontier_with_indices(
+            sim_vol_dyn_aco, sim_ret_dyn_aco
+        )
+        vol_lin_dyn_fii, ret_lin_dyn_fii, hull_idxs_fii = convex_frontier_with_indices(
+            sim_vol_dyn_fii, sim_ret_dyn_fii
+        )
+        vol_lin_dyn_comb, ret_lin_dyn_comb, hull_idxs_comb = convex_frontier_with_indices(
+            sim_vol_dyn_comb, sim_ret_dyn_comb
         )
 
-        # desempacota cada universo
-        sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb = sim_comb
-        sim_ret_aco,  sim_vol_aco,  sim_w_aco,  sim_tickers_aco   = sim_aco
-        sim_ret_fii,  sim_vol_fii,  sim_w_fii,  sim_tickers_fii   = sim_fii
 
-        # 2) computa nuvens compostas
-        sim_ret_dyn_aco, sim_vol_dyn_aco   = compute_dynamic_cloud(sim_ret_aco, sim_vol_aco, sim_w_aco, sim_tickers_aco, prices_aco)
-        sim_ret_dyn_fii, sim_vol_dyn_fii   = compute_dynamic_cloud(sim_ret_fii, sim_vol_fii, sim_w_fii, sim_tickers_fii, prices_fii)
-        sim_ret_dyn_comb, sim_vol_dyn_comb = compute_dynamic_cloud(sim_ret_comb, sim_vol_comb, sim_w_comb, sim_tickers_comb, prices_comb)
 
-        # 3) constrói fronteira + ponto de Sharpe
-        aco_res  = compute_frontier_and_sharpe(sim_ret_dyn_aco, sim_vol_dyn_aco, sim_w_aco, sim_tickers_aco, prices_aco, rf)
-        fii_res  = compute_frontier_and_sharpe(sim_ret_dyn_fii, sim_vol_dyn_fii, sim_w_fii, sim_tickers_fii, prices_fii, rf)
-        comb_res = compute_frontier_and_sharpe(sim_ret_dyn_comb, sim_vol_dyn_comb, sim_w_comb, sim_tickers_comb, prices_comb, rf)
+        # Filtra por composição (só misto)
+        idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
+            sim_tickers_comb,
+            set(acoes_validos),
+            set(fii_validos)
+        )
 
-        # ——— Ações ———
-        w_sharpe_aco      = aco_res["w_sh"]
-        ret_sh_aco        = aco_res["ret_sh"]
-        vol_sh_aco        = aco_res["vol_sh"]
-        sharpe_liquida_aco= aco_res["sharpe_sh"]
-        idx_sharpe_aco    = aco_res["idx_sh"]
+        # apaga mistos inválidos
+        if idx_misto:
+            sim_ret_comb     = sim_ret_comb[idx_misto]
+            sim_vol_comb     = sim_vol_comb[idx_misto]
+            sim_w_comb       = [sim_w_comb[i] for i in idx_misto]
+            sim_tickers_comb = [sim_tickers_comb[i] for i in idx_misto]
+        else:
+            sim_ret_comb = np.array([])
+            sim_vol_comb = np.array([])
+            sim_w_comb   = []
+            sim_tickers_comb = []
 
-        # ——— FIIs ———
-        w_sharpe_fii      = fii_res["w_sh"]
-        ret_sh_fii        = fii_res["ret_sh"]
-        vol_sh_fii        = fii_res["vol_sh"]
-        sharpe_liquida_fii= fii_res["sharpe_sh"]
-        idx_sharpe_fii    = fii_res["idx_sh"]
+        # Ações
+        if vol_lin_dyn_aco.size > 0:
+            sharpe_vals_aco = (ret_lin_dyn_aco - rf) / vol_lin_dyn_aco
+            best_aco        = np.nanargmax(sharpe_vals_aco)
+            idx_sharpe_aco  = hull_idxs_aco[best_aco]
+            w_sharpe_aco    = sim_w_aco[idx_sharpe_aco]
+            ticks_aco       = sim_tickers_aco[idx_sharpe_aco]
+            # Já temos ret/vol compostos para cada simulação,
+            # mas vamos recomputar para o ponto ótimo
+            ret_sh_aco, vol_sh_aco = dynamic_compound_portfolio_metrics(
+                prices_aco, w_sharpe_aco, ticks_aco
+            )
+            sharpe_liquida_aco = (ret_sh_aco - rf) / vol_sh_aco
+        else:
+            # fallback cuida dos casos degenerados
+            w_sharpe_aco, ret_sh_aco, vol_sh_aco, sharpe_liquida_aco = \
+                pick_best_sim(sim_ret_aco, sim_vol_aco, sim_w_aco, rf)
+            vol_lin_dyn_aco = ret_lin_dyn_aco = np.array([])
+            ticks_aco = []
 
-        # ——— Combinado ———
-        w_sharpe_comb      = comb_res["w_sh"]
-        ticks_comb         = comb_res["ticks_sh"]
-        ret_sh_comb        = comb_res["ret_sh"]
-        vol_sh_comb        = comb_res["vol_sh"]
-        sharpe_liquida_comb= comb_res["sharpe_sh"]
-        idx_sharpe_comb= comb_res["idx_sh"]
 
+        # FIIs
+        if vol_lin_dyn_fii.size > 0:
+            sharpe_vals_fii   = (ret_lin_dyn_fii - rf) / vol_lin_dyn_fii
+            best_fii          = np.nanargmax(sharpe_vals_fii)
+            idx_sharpe_fii    = hull_idxs_fii[best_fii]
+            w_sharpe_fii      = sim_w_fii[idx_sharpe_fii]
+            ticks_fii         = sim_tickers_fii[idx_sharpe_fii]
+            # Recalcula ret/vol compostos para o ponto ótimo
+            ret_sh_fii, vol_sh_fii = dynamic_compound_portfolio_metrics(
+                prices_fii, w_sharpe_fii, ticks_fii
+            )
+            sharpe_liquida_fii = (ret_sh_fii - rf) / vol_sh_fii
+        else:
+            # fallback para casos degenerados
+            w_sharpe_fii, ret_sh_fii, vol_sh_fii, sharpe_liquida_fii = \
+                pick_best_sim(sim_ret_fii, sim_vol_fii, sim_w_fii, rf)
+            vol_lin_dyn_fii = ret_lin_dyn_fii = np.array([])
+            ticks_fii = []
+
+        # Combinado (Ações + FIIs)
+        if vol_lin_dyn_comb.size > 0:
+            sharpe_vals_comb   = (ret_lin_dyn_comb - rf) / vol_lin_dyn_comb
+            best_comb          = np.nanargmax(sharpe_vals_comb)
+            idx_sharpe_comb    = hull_idxs_comb[best_comb]
+            w_sharpe_comb      = sim_w_comb[idx_sharpe_comb]
+            ticks_comb         = sim_tickers_comb[idx_sharpe_comb]
+            # Recalcula ret/vol compostos para o ponto ótimo
+            ret_sh_comb, vol_sh_comb = dynamic_compound_portfolio_metrics(
+                prices_comb, w_sharpe_comb, ticks_comb
+            )
+            sharpe_liquida_comb = (ret_sh_comb - rf) / vol_sh_comb
+        else:
+            # fallback para casos degenerados
+            w_sharpe_comb, ret_sh_comb, vol_sh_comb, sharpe_liquida_comb = \
+                pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
+            vol_lin_dyn_comb = ret_lin_dyn_comb = np.array([])
+            ticks_comb = []
+
+
+        
         tickers_man = normalizar_tickers(tickers_man)
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
@@ -1871,6 +1988,9 @@ def main():
                 )
                 sharpe_opt_manual = (ret_opt_manual - rf) / vol_opt_manual
 
+                cov_manual = cov_comb.loc[tickers_man, tickers_man]
+                cov_opt_manual = cov_comb.loc[tickers_man, tickers_man]
+
                 # 3) Carteira Híbrida – otimiza só os pesos
                 tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = otimizar_carteira_hibrida(
                     tickers_man,          # lista de manuais
@@ -1951,34 +2071,22 @@ def main():
 
         # Plotagem
         plot_results(
-            # Ações (dinâmico)
             sim_vol_dyn_aco, sim_ret_dyn_aco,
-            aco_res["front_vol"],   aco_res["front_ret"],
-            aco_res["vol_sh"],      aco_res["ret_sh"],
-
-            # FIIs (dinâmico)
+            vol_lin_dyn_aco, ret_lin_dyn_aco,
+            vol_sh_aco, ret_sh_aco,
             sim_vol_dyn_fii, sim_ret_dyn_fii,
-            fii_res["front_vol"],   fii_res["front_ret"],
-            fii_res["vol_sh"],      fii_res["ret_sh"],
-
-            # Combinado (dinâmico)
+            vol_lin_dyn_fii, ret_lin_dyn_fii,
+            vol_sh_fii, ret_sh_fii,
             sim_vol_dyn_comb, sim_ret_dyn_comb,
-            comb_res["front_vol"],  comb_res["front_ret"],
-            comb_res["vol_sh"],     comb_res["ret_sh"],
-
-            # Carteira Manual e Otimizada
+            vol_lin_dyn_comb, ret_lin_dyn_comb,
+            vol_sh_comb, ret_sh_comb,
             vol_man, ret_man,
             vol_opt_manual, ret_opt_manual,
-
-            # Carteira Híbrida
             vol_hibrida, ret_hibrida,
-
-            # Manual tickers (para mostrar os pontos laranja)
             tickers_man,
-
-            # Ibovespa
             ret_anual_ibov, vol_anual_ibov
         )
+
 
         # ================================
         # 1) Montagem de todos os cenários
@@ -1995,6 +2103,10 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_aco, w_sharpe_aco, ticks
             )
+            st.write("🏷️ Sharpe Máx – Ações")
+            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
+            st.write(f"   ret_passado = {ret_sh_aco:.2%} | vol_passado = {vol_sh_aco:.2%}")
+            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_aco.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – Ações",
@@ -2016,6 +2128,10 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_fii, w_sharpe_fii, ticks
             )
+            st.write("🏷️ Sharpe Máx – FIIs")
+            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
+            st.write(f"   ret_passado = {ret_sh_fii:.2%} | vol_passado = {vol_sh_fii:.2%}")
+            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_fii.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – FIIs",
@@ -2037,6 +2153,10 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_comb, w_sharpe_comb, ticks
             )
+            st.write("🏷️ Sharpe Máx – Ações + FIIs")
+            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
+            st.write(f"   ret_passado = {ret_sh_comb:.2%} | vol_passado = {vol_sh_comb:.2%}")
+            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_comb.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – Ações + FIIs",
