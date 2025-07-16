@@ -1431,7 +1431,7 @@ def main():
                     min_value=0,
                     max_value=100,
                     value=30,
-                    step=5
+                    step=1
                 ) / 100.0
 
     # Botão para iniciar a simulação:
@@ -2077,9 +2077,9 @@ def main():
         st.subheader("📊 Métricas Individuais dos Ativos")
         st.dataframe(
             df_stats.style.format({
-                "Sharpe":       "{:.2f}",
-                "Retorno":      "{:.2%}",
-                "Volatilidade": "{:.2%}"
+                "Sharpe":             "{:.2f}",
+                "Retorno anualizado": "{:.2%}",
+                "Volatilidade":       "{:.2%}"
             }),
             use_container_width=True
         )
