@@ -194,23 +194,10 @@ def filtrar_por_composicao(ativos_simulados: list[list[str]], acoes: set, fiis: 
 
     return so_acoes, so_fiis, mistos
 
-def filtrar_por_indices(arr, indices):
-    if len(indices) == 0:
-        return np.array([])
-    if isinstance(arr, np.ndarray):
-        return arr[indices]
-    else:
-        return [arr[i] for i in indices]
-
 # =======================
 # Funções de Otimização
 # =======================
 
-def negative_sharpe(w, mu, cov, rf):
-    ret = np.dot(mu, w)
-    vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
-    return -(ret - rf) / vol
-    
 def optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w, rf):
     from scipy.optimize import minimize
     n_assets = len(mu_vec)
@@ -240,16 +227,6 @@ def optimize_max_sharpe(mu_vec, cov_mat, min_w, max_w, rf):
         return w_opt, sharpe, True, "Sucesso"
     else:
         return x0, 0.0, False, result.message
-
-def rebalance_weights(weights, min_w=0.03):
-    """
-    Zera os pesos abaixo de min_w e rebalanceia os restantes para somar 100%.
-    """
-    weights = np.where(weights < min_w, 0.0, weights)
-    total = weights.sum()
-    if total > 0:
-        weights = weights / total
-    return weights
 
 def normalizar_tickers(lista):
     return [ticker.strip().upper() + ".SA" if not ticker.strip().upper().endswith(".SA") else ticker.strip().upper() for ticker in lista]
@@ -370,51 +347,6 @@ def pick_best_sim(
     idx = np.nanargmax(sharpe)
     return sim_w[idx], sim_ret[idx], sim_vol[idx], sharpe[idx]
 
-def convex_frontier(vols: np.ndarray, rets: np.ndarray):
-    """
-    Retorna (vol_interp, ret_interp, idx_front) com interpolação suave da fronteira eficiente.
-    Se houver menos de 2 pontos no envelope superior, retorna os pontos brutos.
-    """
-    if len(vols) < 3 or len(rets) < 3:
-        return np.array([]), np.array([]), []
-
-    pts = np.column_stack((vols, rets))
-    
-    try:
-        hull = ConvexHull(pts)
-    except Exception:
-        return np.array([]), np.array([]), []
-
-    verts = hull.vertices
-    verts = sorted(verts, key=lambda i: pts[i, 0])
-
-    frontier = []
-    idx_front = []
-    cur_max_ret = -np.inf
-    for i in verts:
-        vol, ret = pts[i]
-        if ret >= cur_max_ret:
-            frontier.append((vol, ret))
-            idx_front.append(i)
-            cur_max_ret = ret
-
-    if len(frontier) < 2:
-        vol_f, ret_f = zip(*frontier) if frontier else ([], [])
-        return np.array(vol_f), np.array(ret_f), idx_front
-
-    vol_f, ret_f = zip(*frontier)
-    vol_f = np.array(vol_f)
-    ret_f = np.array(ret_f)
-
-    try:
-        interpolador = PchipInterpolator(vol_f, ret_f)
-        vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
-        ret_interp = interpolador(vol_interp)
-        return vol_interp, ret_interp, idx_front
-    except Exception:
-        # fallback: retorna os pontos brutos
-        return vol_f, ret_f, idx_front
-
 def convex_frontier_with_indices(vols: np.ndarray, rets: np.ndarray):
     """
     Retorna
@@ -447,88 +379,19 @@ def convex_frontier_with_indices(vols: np.ndarray, rets: np.ndarray):
     vol_f, ret_f = map(np.array, zip(*envelope))
     return vol_f, ret_f, idxs
 
-def build_efficient_frontier_compound(sim_vol, sim_ret, sim_weights, prices, tickers, rf=0.0):
-    """
-    Constrói a fronteira eficiente com retorno composto anualizado.
-    Retorna: vol_interp, ret_interp, idx_sharpe_max, ponto_sharpe
-    """
-    if len(sim_vol) < 3 or len(sim_ret) < 3:
-        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
-
-    pts = np.column_stack((sim_vol, sim_ret))
-    try:
-        hull = ConvexHull(pts)
-    except Exception:
-        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
-
-    verts = sorted(hull.vertices, key=lambda i: pts[i, 0])
-
-    dyn_vol = []
-    dyn_ret = []
-    idx_validos = []
-
-    for i in verts:
-        try:
-            w = sim_weights[i]
-            ret_c, vol_c = dynamic_compound_portfolio_metrics(prices, w, tickers)
-            if not np.isnan(ret_c) and not np.isnan(vol_c):
-                dyn_ret.append(ret_c)
-                dyn_vol.append(vol_c)
-                idx_validos.append(i)
-        except:
-            continue
-
-    if len(dyn_ret) < 2:
-        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
-
-    # Filtra envelope superior
-    frontier = []
-    idx_front = []
-    cur_max_ret = -np.inf
-    for i, (v, r) in enumerate(zip(dyn_vol, dyn_ret)):
-        if r >= cur_max_ret:
-            frontier.append((v, r))
-            idx_front.append(i)
-            cur_max_ret = r
-
-    if len(frontier) < 2:
-        return np.array([]), np.array([]), None, (np.nan, np.nan, np.nan, np.nan)
-
-    # Ordena por volatilidade
-    frontier_sorted = sorted(frontier, key=lambda x: x[0])
-    vol_f, ret_f = zip(*frontier_sorted)
-    vol_f = np.array(vol_f)
-    ret_f = np.array(ret_f)
-
-    # Interpolação suave
-    interpolador = PchipInterpolator(vol_f, ret_f)
-    vol_interp = np.linspace(vol_f.min(), vol_f.max(), 200)
-    ret_interp = interpolador(vol_interp)
-
-    # Melhor Sharpe
-    sharpe_vals = (ret_f - rf) / vol_f
-    best_i = np.argmax(sharpe_vals)
-    idx_sharpe = idx_validos[idx_front[best_i]]
-    w_sharpe = sim_weights[idx_sharpe]
-    ret_sharpe = ret_f[best_i]
-    vol_sharpe = vol_f[best_i]
-    sharpe_max = sharpe_vals[best_i]
-
-    return vol_interp, ret_interp, idx_sharpe, (ret_sharpe, vol_sharpe, sharpe_max, w_sharpe)
-
 # =======================
 # Funções de Plotagem
 # =======================
 
 def plot_results(
     sim_vol_dyn_aco, sim_ret_dyn_aco,
-    vol_lin_aco, ret_lin_aco,
+    vol_lin_dyn_aco, ret_lin_dyn_aco,
     vol_sh_aco, ret_sh_aco,
     sim_vol_dyn_fii, sim_ret_dyn_fii,
-    vol_lin_fii, ret_lin_fii,
+    vol_lin_dyn_fii, ret_lin_dyn_fii,
     vol_sh_fii, ret_sh_fii,
     sim_vol_dyn_comb, sim_ret_dyn_comb,
-    vol_lin_comb, ret_lin_comb,
+    vol_lin_dyn_comb, ret_lin_dyn_comb,
     vol_sh_comb, ret_sh_comb,
     vol_man, ret_man,
     vol_opt_manual, ret_opt_manual,
@@ -550,15 +413,12 @@ def plot_results(
                    s=8, alpha=0.12, c='green')
 
     # Efficient frontier lines (compostos)
-    if vol_lin_comb.size > 0:
-        ax.plot(vol_lin_comb, ret_lin_comb,
-                '-', c='red', lw=2, label='Fronteira – Ações+FIIs')
-    if vol_lin_aco.size > 0:
-        ax.plot(vol_lin_aco, ret_lin_aco,
-                '-', c='blue', lw=2, label='Fronteira – Ações')
-    if vol_lin_fii.size > 0:
-        ax.plot(vol_lin_fii, ret_lin_fii,
-                '-', c='green', lw=2, label='Fronteira – FIIs')
+    if vol_lin_dyn_comb.size > 0:
+        ax.plot(vol_lin_dyn_comb, ret_lin_dyn_comb, '-', c='red', lw=2)
+    if vol_lin_dyn_aco.size > 0:
+        ax.plot(vol_lin_dyn_aco, ret_lin_dyn_aco, '-', c='blue', lw=2)
+    if vol_lin_dyn_fii.size > 0:
+        ax.plot(vol_lin_dyn_fii, ret_lin_dyn_fii, '-', c='green', lw=2)
 
     # Sharpe max stars (compostos)
     if not np.isnan(vol_sh_comb):
@@ -1764,8 +1624,6 @@ def main():
             sim_vol_dyn_comb, sim_ret_dyn_comb
         )
 
-
-
         # Filtra por composição (só misto)
         idx_aco, idx_fii, idx_misto = filtrar_por_composicao(
             sim_tickers_comb,
@@ -1843,9 +1701,7 @@ def main():
                 pick_best_sim(sim_ret_comb, sim_vol_comb, sim_w_comb, rf)
             vol_lin_dyn_comb = ret_lin_dyn_comb = np.array([])
             ticks_comb = []
-
-
-        
+       
         tickers_man = normalizar_tickers(tickers_man)
 
         # Verifica se há tickers da carteira manual que não estão em prices_comb
@@ -1899,7 +1755,6 @@ def main():
                 rets_comb = prices_comb.pct_change().dropna()
                 mu_comb   = rets_comb.mean() * 252
                 cov_comb  = rets_comb.cov()  * 252
-
 
             pares_filtrados = [
                 (t, v) for t, v in zip(tickers_man, valores_man)
@@ -1987,9 +1842,6 @@ def main():
                     tickers_man
                 )
                 sharpe_opt_manual = (ret_opt_manual - rf) / vol_opt_manual
-
-                cov_manual = cov_comb.loc[tickers_man, tickers_man]
-                cov_opt_manual = cov_comb.loc[tickers_man, tickers_man]
 
                 # 3) Carteira Híbrida – otimiza só os pesos
                 tickers_hibrida, w_hibrida, ret_hibrida, vol_hibrida, sharpe_hibrida = otimizar_carteira_hibrida(
@@ -2087,7 +1939,6 @@ def main():
             ret_anual_ibov, vol_anual_ibov
         )
 
-
         # ================================
         # 1) Montagem de todos os cenários
         # ================================
@@ -2103,10 +1954,6 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_aco, w_sharpe_aco, ticks
             )
-            st.write("🏷️ Sharpe Máx – Ações")
-            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
-            st.write(f"   ret_passado = {ret_sh_aco:.2%} | vol_passado = {vol_sh_aco:.2%}")
-            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_aco.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – Ações",
@@ -2128,10 +1975,6 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_fii, w_sharpe_fii, ticks
             )
-            st.write("🏷️ Sharpe Máx – FIIs")
-            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
-            st.write(f"   ret_passado = {ret_sh_fii:.2%} | vol_passado = {vol_sh_fii:.2%}")
-            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_fii.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – FIIs",
@@ -2153,10 +1996,6 @@ def main():
             ret_dyn, vol_dyn = dynamic_compound_portfolio_metrics(
                 prices_comb, w_sharpe_comb, ticks
             )
-            st.write("🏷️ Sharpe Máx – Ações + FIIs")
-            st.write(f"   w@μ_arith   = {w_dot_mu:.2%}")
-            st.write(f"   ret_passado = {ret_sh_comb:.2%} | vol_passado = {vol_sh_comb:.2%}")
-            st.write(f"   ret_dyn     = {ret_dyn:.2%} | vol_dyn     = {vol_dyn:.2%}")
             cov_sub = cov_comb.loc[ticks, ticks]
             cenarios.append((
                 "Sharpe Máx – Ações + FIIs",
