@@ -308,15 +308,33 @@ def otimizar_carteira_hibrida(
     w_new_opt = res.x
 
     # 8) filtra novos abaixo de min_w e renormaliza o capital rest
-    mask_new = w_new_opt >= min_w
-    if mask_new.any():
-        w_new_opt[~mask_new] = 0.0
-        s = w_new_opt.sum()
-        if s > 0:
-            w_new_opt[mask_new] *= rest / s
+    if rest < min_w:
+        # quando o capital adicional é menor que min_w,
+        # aloca tudo num só ativo novo (o de maior Sharpe standalone)
+        # extrai variâncias dos ativos novos
+        var_all = Σ.diagonal()
+        var_new = var_all[idx_new]
+        sigma_new = np.sqrt(var_new)
+        # Sharpe standalone de cada ativo novo
+        sharpe_single = (μ[idx_new] - rf) / sigma_new
+        # índice do melhor ativo dentro de idx_new
+        best_new = int(np.nanargmax(sharpe_single))
+        # monta vetor w_new_opt zerado e aloca todo rest
+        w_new_opt = np.zeros_like(w_new_opt)
+        w_new_opt[best_new] = rest
+
     else:
-        # nenhum novo acima de min_w → retorna só manual
-        w_new_opt[:] = 0.0
+        # caso normal: filtra e renormaliza os que passam em min_w
+        mask_new = w_new_opt >= min_w
+        if mask_new.any():
+            w_new_opt[~mask_new] = 0.0
+            s = w_new_opt.sum()
+            if s > 0:
+                w_new_opt[mask_new] *= rest / s
+        else:
+            # se mesmo assim não sobrar ninguém, não adiciona nada
+            w_new_opt[:] = 0.0
+
 
     # 9) monta vetor final de pesos e métricas
     w_full = np.zeros_like(μ)
