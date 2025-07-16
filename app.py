@@ -309,19 +309,34 @@ def otimizar_carteira_hibrida(
 
     # 8) filtra novos abaixo de min_w e renormaliza o capital rest
     if rest < min_w:
-        # quando o capital adicional é menor que min_w,
-        # aloca tudo num só ativo novo (o de maior Sharpe standalone)
-        # extrai variâncias dos ativos novos
-        var_all = Σ.diagonal()
-        var_new = var_all[idx_new]
-        sigma_new = np.sqrt(var_new)
-        # Sharpe standalone de cada ativo novo
-        sharpe_single = (μ[idx_new] - rf) / sigma_new
-        # índice do melhor ativo dentro de idx_new
-        best_new = int(np.nanargmax(sharpe_single))
-        # monta vetor w_new_opt zerado e aloca todo rest
+        # monta vetor só com a parte manual
+        w_full_man = np.zeros_like(μ)
+        for j, im in enumerate(idx_man):
+            w_full_man[im] = w_man_target[j]
+
+        best_sh = -np.inf
+        best_k  = None
+
+        # testa cada ativo novo isoladamente
+        for k, inew in enumerate(idx_new):
+            w_test = w_full_man.copy()
+            w_test[inew] = rest
+
+            # calcula Sharpe da carteira manual + 1 ativo novo
+            port_log  = w_test @ μ
+            port_ret  = np.expm1(port_log)
+            port_vol  = np.sqrt(w_test @ Σ @ w_test)
+            sharpe_t  = (port_ret - rf) / port_vol
+
+            if sharpe_t > best_sh:
+                best_sh = sharpe_t
+                best_k  = k
+
+        # aloca todo o rest ao melhor candidato
         w_new_opt = np.zeros_like(w_new_opt)
-        w_new_opt[best_new] = rest
+        if best_k is not None:
+            w_new_opt[best_k] = rest
+
 
     else:
         # caso normal: filtra e renormaliza os que passam em min_w
